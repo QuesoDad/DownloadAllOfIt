@@ -123,7 +123,7 @@ Contributions are welcome! Please fork the repository, create a feature branch, 
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is licensed under Creative Commons. Just do whatever. I'm not getting paid and couldn't give two toots on a whistle what you do with this as long as you aren't hurting anybody.
 
 ## Credits
 
