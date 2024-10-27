@@ -73,11 +73,12 @@ pip install -r requirements.txt
 
 ### Running the Application
 
-Run the main Python file to launch the GUI:
+Run the main Python file to launch the GUI or just double click on DAOI.bat.
 
 ```bash
 python main.py
 ```
+DAOI.bat
 
 ### Downloading Videos
 
