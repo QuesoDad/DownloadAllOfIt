@@ -123,11 +123,12 @@ Contributions are welcome! Please fork the repository, create a feature branch, 
 
 ## License
 
-This project is licensed under Creative Commons. Just do whatever. I'm not getting paid and couldn't give two toots on a whistle what you do with this as long as you aren't hurting anybody.
+This project is licensed under Creative Commons. Just do whatever. I'm not getting paid and couldn't give two toots on a whistle what you do with this as long as you aren't hurting anybody. If you make millions/billions, though, you owe me. (Looking at you Notch/Microsoft.*)
 
 ## Credits
 
 Download All Of It (DAOI) was developed by Kristian Boruff (GitHub: [QuesoDad](https://github.com/QuesoDad)). Special thanks to the `yt-dlp` community for the robust downloading tool that powers this application.
+* Match Light.wav by Krisboruff (https://freesound.org/people/Krisboruff/sounds/17748/?page=2)
 
 ## Acknowledgements
 

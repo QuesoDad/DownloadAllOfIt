@@ -2,7 +2,7 @@
 
 import os
 import yt_dlp
-from utils import MyLogger
+from utils import clean_filename
 import json
 import time
 
@@ -34,10 +34,7 @@ class YTDownloadManager:
             if is_stopped and is_stopped():
                 raise yt_dlp.utils.DownloadCancelled()
             if d['status'] == 'downloading':
-                # Check if this is the main video or audio file
                 if d['info_dict'].get('requested_downloads'):
-                    # Multiple files are being downloaded (video+audio)
-                    # Only proceed if 'fragment_index' is in 'd' to avoid counting the same file multiple times
                     if 'fragment_index' in d:
                         return
                 if progress_callback:
@@ -54,82 +51,22 @@ class YTDownloadManager:
             """Hook function called after post-processing."""
             if d['status'] == 'finished':
                 info_dict = d['info_dict']
-                # Get the path to the video file
                 video_filepath = info_dict['filepath']
                 video_basename = os.path.splitext(video_filepath)[0]
-                # Thumbnail filename after conversion
                 thumbnail_filepath = video_basename + '.png'
-                # Text file with metadata
                 metadata_filepath = video_basename + '.txt'
 
-                # Write the metadata and original URL to the text file
+                # Save metadata and URL
                 original_url = info_dict.get('original_url', video_url)
-
-                # Prepare readable metadata with section headers
-                metadata_sections = []
-                # Basic Info
-                basic_info = {
-                    'Title': info_dict.get('title', ''),
-                    'Uploader': info_dict.get('uploader', ''),
-                    'Upload date': info_dict.get('upload_date', ''),
-                    'Duration': info_dict.get('duration', ''),
-                    'View count': info_dict.get('view_count', ''),
-                    'Like count': info_dict.get('like_count', ''),
-                    'Description': info_dict.get('description', ''),
-                    'Tags': ', '.join(info_dict.get('tags', [])),
-                }
-                basic_info_str = '\n'.join(f"{key}: {value}" for key, value in basic_info.items())
-                metadata_sections.append(f"Basic Info:\n{basic_info_str}")
-
-                # Technical Info
-                technical_info = {
-                    'Format': info_dict.get('format', ''),
-                    'Format ID': info_dict.get('format_id', ''),
-                    'Resolution': info_dict.get('resolution', ''),
-                    'FPS': info_dict.get('fps', ''),
-                    'Codec': info_dict.get('acodec', ''),
-                    'Video Codec': info_dict.get('vcodec', ''),
-                    'Audio Codec': info_dict.get('acodec', ''),
-                }
-                technical_info_str = '\n'.join(f"{key}: {value}" for key, value in technical_info.items())
-                metadata_sections.append(f"Technical Info:\n{technical_info_str}")
-
-                # Other Info
-                other_info = {
-                    'Categories': ', '.join(info_dict.get('categories', [])),
-                    'License': info_dict.get('license', ''),
-                    'Age Limit': info_dict.get('age_limit', ''),
-                    'Webpage URL': info_dict.get('webpage_url', ''),
-                    'Original URL': original_url,
-                }
-                other_info_str = '\n'.join(f"{key}: {value}" for key, value in other_info.items())
-                metadata_sections.append(f"Other Info:\n{other_info_str}")
-
-                # Combine all sections
-                metadata_text = '\n\n'.join(metadata_sections)
-
+                metadata_text = self.prepare_metadata(info_dict, original_url)
+                
                 with open(metadata_filepath, 'w', encoding='utf-8') as f:
                     f.write(metadata_text)
 
-                # Get the video's upload timestamp
+                # Set modification times
                 upload_timestamp = info_dict.get('timestamp')
-
-                # If upload_timestamp is available, set the modification times
                 if upload_timestamp:
-                    # Convert timestamp to a tuple (atime, mtime)
-                    times = (upload_timestamp, upload_timestamp)
-
-                    # Update modification time of the video file
-                    if os.path.exists(video_filepath):
-                        os.utime(video_filepath, times)
-
-                    # Update modification time of the thumbnail file
-                    if os.path.exists(thumbnail_filepath):
-                        os.utime(thumbnail_filepath, times)
-
-                    # Update modification time of the metadata text file
-                    if os.path.exists(metadata_filepath):
-                        os.utime(metadata_filepath, times)
+                    self.set_file_times([video_filepath, thumbnail_filepath, metadata_filepath], upload_timestamp)
                 else:
                     self.logger.warning("Upload timestamp not available; file modification times not updated.")
 
@@ -139,30 +76,24 @@ class YTDownloadManager:
             'merge_output_format': 'mp4',
             'writesubtitles': True,
             'writethumbnail': True,
-            'write_all_thumbnails': False,
-            'convert_thumbnails': 'png',  # Convert thumbnails to PNG
+            'convert_thumbnails': 'png',
             'embedthumbnail': True,
             'writedescription': True,
             'writeinfojson': True,
             'embedmetadata': True,
-            'updatetime': False,  # We handle the file times manually
+            'updatetime': False,
             'retries': 3,
             'continuedl': True,
             'ignoreerrors': True,
             'progress_hooks': [progress_hook],
-            'postprocessor_hooks': [postprocessor_hook],  # Hook to set modification date
+            'postprocessor_hooks': [postprocessor_hook],
             'logger': self.logger,
-            'noplaylist': True,  # Do not download playlists
+            'noplaylist': True,
         }
 
         postprocessors = [
-            {
-                'key': 'FFmpegThumbnailsConvertor',
-                'format': 'png',
-            },
-            {
-                'key': 'EmbedThumbnail',
-            },
+            {'key': 'FFmpegThumbnailsConvertor', 'format': 'png'},
+            {'key': 'EmbedThumbnail'},
         ]
 
         if self.settings.get('output_format') == 'mp3':
@@ -170,7 +101,7 @@ class YTDownloadManager:
                 'format': 'bestaudio/best',
                 'postprocessors': [
                     {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
-                    *postprocessors,  # Append thumbnail processors
+                    *postprocessors,
                 ],
             })
 
@@ -182,3 +113,61 @@ class YTDownloadManager:
                 ydl.download([video_url])
             except yt_dlp.utils.DownloadCancelled:
                 self.logger.info(f"Download cancelled for URL: {video_url}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error during download of {video_url}: {e}")
+                raise
+
+    def prepare_metadata(self, info_dict, original_url):
+        """
+        Prepare and format metadata text from video information.
+
+        :param info_dict: Dictionary containing video information.
+        :param original_url: Original URL of the video.
+        :return: Formatted metadata text.
+        """
+        metadata_sections = []
+
+        basic_info = {
+            'Title': info_dict.get('title', ''),
+            'Uploader': info_dict.get('uploader', ''),
+            'Upload date': info_dict.get('upload_date', ''),
+            'Duration': info_dict.get('duration', ''),
+            'View count': info_dict.get('view_count', ''),
+            'Like count': info_dict.get('like_count', ''),
+            'Description': info_dict.get('description', ''),
+            'Tags': ', '.join(info_dict.get('tags', [])),
+        }
+        metadata_sections.append("Basic Info:\n" + '\n'.join(f"{key}: {value}" for key, value in basic_info.items()))
+
+        technical_info = {
+            'Format': info_dict.get('format', ''),
+            'Format ID': info_dict.get('format_id', ''),
+            'Resolution': info_dict.get('resolution', ''),
+            'FPS': info_dict.get('fps', ''),
+            'Video Codec': info_dict.get('vcodec', ''),
+            'Audio Codec': info_dict.get('acodec', ''),
+        }
+        metadata_sections.append("Technical Info:\n" + '\n'.join(f"{key}: {value}" for key, value in technical_info.items()))
+
+        other_info = {
+            'Categories': ', '.join(info_dict.get('categories', [])),
+            'License': info_dict.get('license', ''),
+            'Age Limit': info_dict.get('age_limit', ''),
+            'Webpage URL': info_dict.get('webpage_url', ''),
+            'Original URL': original_url,
+        }
+        metadata_sections.append("Other Info:\n" + '\n'.join(f"{key}: {value}" for key, value in other_info.items()))
+
+        return '\n\n'.join(metadata_sections)
+
+    def set_file_times(self, filepaths, timestamp):
+        """
+        Update file modification times based on video upload timestamp.
+
+        :param filepaths: List of file paths to update.
+        :param timestamp: Unix timestamp to set as the file modification time.
+        """
+        times = (timestamp, timestamp)
+        for filepath in filepaths:
+            if os.path.exists(filepath):
+                os.utime(filepath, times)

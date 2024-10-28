@@ -1,73 +1,117 @@
 # utils.py
 
-import re
+"""
+Utility functions for JSON and file management.
+
+This module provides functions to load and save JSON configurations,
+manage file paths, and sanitize filenames.
+"""
+
 import os
-import logging
-from yt_dlp.extractor import gen_extractors
+import json
+from typing import Any, Dict, List
 
-MAX_FILENAME_LENGTH = 255
 
-class MyLogger:
+def load_last_directory(file_path: str = 'last_directory.json') -> str:
     """
-    Custom logger class to handle logging within the application.
+    Load the last used directory from a JSON file.
+
+    Args:
+        file_path (str): Path to the JSON file storing the last directory.
+
+    Returns:
+        str: The last used directory path. Returns an empty string if not found or on error.
     """
-    def __init__(self):
-        self.logger = logging.getLogger()
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                return data.get('last_directory', '')
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading last directory: {e}")
+    return ''
 
-        # File handler
-        file_handler = logging.FileHandler('app.log', mode='a')
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
 
-    def debug(self, msg):
-        """Log debug messages."""
-        self.logger.debug(msg)
-
-    def info(self, msg):
-        """Log info messages."""
-        self.logger.info(msg)
-
-    def warning(self, msg):
-        """Log warning messages."""
-        self.logger.warning(msg)
-
-    def error(self, msg):
-        """Log error messages."""
-        self.logger.error(msg)
-
-def clean_filename(filename):
+def save_last_directory(folder: str, file_path: str = 'last_directory.json') -> None:
     """
-    Clean the filename by removing or replacing illegal characters.
+    Save the last used directory to a JSON file.
 
-    :param filename: The original filename.
-    :return: A cleaned version of the filename.
+    Args:
+        folder (str): The directory path to save.
+        file_path (str): Path to the JSON file storing the last directory.
     """
-    filename = filename.replace('...', '…')
-    filename = re.sub(r'[<>:"/\\|?*#%&{}$!‘’@^~+]', '', filename)
-    filename = filename.strip()
-    reserved_names = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3",
-        "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
-        "LPT7", "LPT8", "LPT9"
+    try:
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump({'last_directory': folder}, file)
+    except IOError as e:
+        print(f"Error saving last directory: {e}")
+
+
+def load_settings(file_path: str = 'settings.json') -> Dict[str, Any]:
+    """
+    Load application settings from a JSON file.
+
+    Args:
+        file_path (str): Path to the JSON settings file.
+
+    Returns:
+        Dict[str, Any]: A dictionary of settings. Returns an empty dict on error.
+    """
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return json.load(file)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading settings: {e}")
+    return {}
+
+
+def save_settings(settings: Dict[str, Any], file_path: str = 'settings.json') -> None:
+    """
+    Save application settings to a JSON file.
+
+    Args:
+        settings (Dict[str, Any]): A dictionary of settings to save.
+        file_path (str): Path to the JSON settings file.
+    """
+    try:
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump(settings, file, indent=4)
+    except IOError as e:
+        print(f"Error saving settings: {e}")
+
+
+def clean_filename(filename: str) -> str:
+    """
+    Sanitize the filename by removing or replacing invalid characters.
+
+    Args:
+        filename (str): The original filename.
+
+    Returns:
+        str: A sanitized filename safe for use in file systems.
+    """
+    invalid_chars = r'<>:"/\|?*'
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    return filename.strip()
+
+
+def get_supported_sites() -> List[str]:
+    """
+    Retrieve a list of supported sites for downloading.
+
+    Returns:
+        List[str]: A list of supported website URLs or names.
+    """
+    # This is a placeholder. Replace with actual supported sites as needed.
+    return [
+        "YouTube",
+        "Vimeo",
+        "Facebook",
+        "Twitter",
+        "Dailymotion",
+        "Twitch",
+        "SoundCloud",
+        "Instagram"
     ]
-
-    if filename.upper() in reserved_names:
-        filename = f"{filename}_file"
-
-    return filename[:MAX_FILENAME_LENGTH]
-
-def get_supported_sites():
-    """
-    Return a list of unique supported site names.
-
-    :return: A sorted list of supported site names.
-    """
-    extractors = gen_extractors()
-    site_names = set()
-    for extractor in extractors:
-        ie_name = extractor.IE_NAME
-        base_site = ie_name.split(':')[0]
-        site_names.add(base_site)
-    return sorted(site_names)
