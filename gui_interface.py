@@ -2,6 +2,7 @@
 
 import os
 import logging
+import subprocess
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QLabel, QTextEdit, QProgressBar,
@@ -14,10 +15,27 @@ from dialogs import SupportedSitesDialog, SettingsDialog, FailedDownloadsDialog
 from utils import load_last_directory, save_last_directory, load_settings, save_settings, get_supported_sites
 from log_handler import QTextEditLogger  # Import QTextEditLogger for logging
 
+def check_ffmpeg_installed():
+    """Check if ffmpeg is installed and accessible."""
+    try:
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
 class YTDownloadApp(QtWidgets.QWidget):
     """Main application class for the video downloader GUI."""
     def __init__(self, test_mode=False, test_urls=None):
         super().__init__()
+        # Check if ffmpeg is installed
+        if not check_ffmpeg_installed():
+            QMessageBox.critical(
+                self,
+                "FFmpeg Not Found",
+                "FFmpeg is not installed or not found in system PATH.\nPlease install FFmpeg to enable full functionality."
+            )
+            sys.exit(1)  # Exit the application
+        
         self.output_folder = load_last_directory()
         self.settings = load_settings()
         self.cookies_file = self.settings.get('cookies_file', '')
@@ -137,6 +155,16 @@ class YTDownloadApp(QtWidgets.QWidget):
         self.side_panel.setLayout(self.side_layout)
         main_layout.addWidget(self.side_panel)
 
+        # Initialize Thumbnail Label
+        self.thumbnail_label = QLabel(self)
+        self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        self.side_layout.addWidget(self.thumbnail_label)
+
+        # Initialize Video Description Browser
+        self.video_description_browser = QTextEdit(self)
+        self.video_description_browser.setReadOnly(True)
+        self.side_layout.addWidget(self.video_description_browser)
+
     def select_output_folder(self):
         """Open file dialog to select the output folder and save it."""
         initial_dir = self.output_folder or os.path.expanduser("~")
@@ -240,7 +268,7 @@ class YTDownloadApp(QtWidgets.QWidget):
 
     def open_settings_dialog(self):
         """Open the settings dialog."""
-        dialog = SettingsDialog(self.settings)
+        dialog = SettingsDialog(self.settings, self)
         if dialog.exec_():
             self.settings = dialog.get_settings()
             save_settings(self.settings)
@@ -250,13 +278,24 @@ class YTDownloadApp(QtWidgets.QWidget):
         """Handle the failed downloads by showing a dialog."""
         if not failed_urls:
             return
-        failed_urls_formatted = [f"{item['url']} - {item['reason']}" for item in failed_urls]
+
+        # Format each failed URL with its original value, marking private videos as such
+        failed_urls_formatted = [
+            f"{item.get('url', 'Unknown URL')} - {item.get('reason', 'No reason provided')}"
+            for item in failed_urls
+        ]
+
+        # Log the formatted list for debugging
+        self.logger.debug(f"Formatted Failed URLs: {failed_urls_formatted}")
+
         dialog = FailedDownloadsDialog(failed_urls_formatted, self)
         if dialog.exec_() == QDialog.Accepted:
             new_urls = dialog.get_failed_urls()
             if new_urls:
                 self.url_input.setText('\n'.join(new_urls))
                 self.on_start_download_clicked()
+
+
 
 
 # If this script is run directly, create and display the application window

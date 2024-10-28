@@ -70,41 +70,101 @@ class YTDownloadManager:
                 else:
                     self.logger.warning("Upload timestamp not available; file modification times not updated.")
 
+        # Configure yt_dlp options
         ydl_opts = {
             'outtmpl': output_template,
-            'format': 'bestvideo+bestaudio/best',
-            'merge_output_format': 'mp4',
+            'logger': self.logger,
+            'ignoreerrors': True,
+            'quiet': True,
+            'no_warnings': True,
+            'progress_hooks': [progress_hook],
+            'postprocessor_hooks': [postprocessor_hook],
             'writesubtitles': True,
+            'writeautomaticsub': True,
             'writethumbnail': True,
-            'convert_thumbnails': 'png',
-            'embedthumbnail': True,
             'writedescription': True,
             'writeinfojson': True,
             'embedmetadata': True,
-            'updatetime': False,
-            'retries': 3,
-            'continuedl': True,
-            'ignoreerrors': True,
-            'progress_hooks': [progress_hook],
-            'postprocessor_hooks': [postprocessor_hook],
-            'logger': self.logger,
-            'noplaylist': True,
+            'embedthumbnail': True,  # Embed thumbnail
+            'postprocessors': [
+                {
+                    'key': 'FFmpegEmbedSubtitle',
+                    'already_have_subtitle': False,
+                },
+                {
+                    'key': 'FFmpegMetadata',
+                },
+                {
+                    'key': 'FFmpegThumbnailsConvertor',
+                    'format': 'png',
+                },
+                {
+                    'key': 'EmbedThumbnail',
+                },
+            ],
         }
 
-        postprocessors = [
-            {'key': 'FFmpegThumbnailsConvertor', 'format': 'png'},
-            {'key': 'EmbedThumbnail'},
-        ]
-
-        if self.settings.get('output_format') == 'mp3':
+        # Adjust options based on output format
+        output_format = self.settings.get('output_format', 'mp4').lower()
+        if output_format == 'mp3':
             ydl_opts.update({
                 'format': 'bestaudio/best',
                 'postprocessors': [
-                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
-                    *postprocessors,
+                    {
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    },
+                    {
+                        'key': 'FFmpegMetadata',
+                    },
+                ],
+            })
+        elif output_format == 'mkv':
+            ydl_opts.update({
+                'format': 'bestvideo+bestaudio/best',
+                'merge_output_format': 'mkv',
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegEmbedSubtitle',
+                        'already_have_subtitle': False,
+                    },
+                    {
+                        'key': 'FFmpegMetadata',
+                    },
+                    {
+                        'key': 'FFmpegThumbnailsConvertor',
+                        'format': 'png',
+                    },
+                    {
+                        'key': 'EmbedThumbnail',
+                    },
+                ],
+            })
+        else:
+            # Default to mp4 settings if not mp3 or mkv
+            ydl_opts.update({
+                'format': 'bestvideo+bestaudio/best',
+                'merge_output_format': 'mp4',
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegEmbedSubtitle',
+                        'already_have_subtitle': False,
+                    },
+                    {
+                        'key': 'FFmpegMetadata',
+                    },
+                    {
+                        'key': 'FFmpegThumbnailsConvertor',
+                        'format': 'png',
+                    },
+                    {
+                        'key': 'EmbedThumbnail',
+                    },
                 ],
             })
 
+        # Include cookies if provided
         if self.cookies_file:
             ydl_opts['cookiefile'] = self.cookies_file
 

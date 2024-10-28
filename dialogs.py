@@ -9,7 +9,7 @@ user interactions within the application.
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QTextEdit,
-    QDialogButtonBox, QPushButton, QHBoxLayout
+    QDialogButtonBox, QPushButton, QHBoxLayout, QCheckBox, QComboBox
 )
 from PyQt5.QtCore import Qt
 
@@ -54,21 +54,15 @@ class SettingsDialog(QDialog):
         settings (dict): A dictionary containing current settings.
     """
 
-    def __init__(self, settings):
-        super().__init__()
+    def __init__(self, settings, parent=None):
+        super().__init__(parent)
         self.setWindowTitle(self.tr("Settings"))
         self.settings = settings
 
         # Layout
         layout = QVBoxLayout()
 
-        # Use year subfolders
-        self.year_subfolders_checkbox = QPushButton()
-        self.year_subfolders_checkbox = QLabel(
-            self.tr("Organize downloads into year subfolders")
-        )
-        # Replace QPushButton with QCheckBox
-        from PyQt5.QtWidgets import QCheckBox
+        # Use year subfolders (Checkbox)
         self.year_subfolders_checkbox = QCheckBox(
             self.tr("Organize downloads into year subfolders")
         )
@@ -77,22 +71,19 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self.year_subfolders_checkbox)
 
-        # Output format
-        from PyQt5.QtWidgets import QComboBox
-        from PyQt5.QtWidgets import QLabel
-
+        # Output format (ComboBox)
         output_format_label = QLabel(self.tr("Output Format:"))
         layout.addWidget(output_format_label)
 
         self.format_combo = QComboBox()
-        self.format_combo.addItems(['mp4', 'mp3'])
+        self.format_combo.addItems(['mp4', 'mp3', 'mkv'])
         current_format = self.settings.get('output_format', 'mp4')
         index = self.format_combo.findText(current_format)
         if index >= 0:
             self.format_combo.setCurrentIndex(index)
         layout.addWidget(self.format_combo)
 
-        # Logging level
+        # Logging level (ComboBox)
         logging_level_label = QLabel(self.tr("Logging Level:"))
         layout.addWidget(logging_level_label)
 
@@ -147,6 +138,9 @@ class FailedDownloadsDialog(QDialog):
         self.setWindowTitle(self.tr("Failed Downloads"))
         self.failed_urls_formatted = failed_urls_formatted
 
+        if not all(isinstance(item, str) for item in self.failed_urls_formatted):
+            raise ValueError("All items in failed_urls_formatted must be strings.")
+        
         # Set dialog size
         self.resize(500, 400)  # Width x Height
 
@@ -160,7 +154,7 @@ class FailedDownloadsDialog(QDialog):
         # TextEdit to display failed URLs
         self.failed_urls_text = QTextEdit()
         self.failed_urls_text.setReadOnly(True)
-        self.failed_urls_text.setText('\n'.join(failed_urls_formatted))
+        self.failed_urls_text.setText('\n'.join(self.failed_urls_formatted))
         layout.addWidget(self.failed_urls_text)
 
         # Buttons

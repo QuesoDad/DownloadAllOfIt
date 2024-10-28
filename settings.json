@@ -1,1 +1,6 @@
-{"use_year_subfolders": false, "output_format": "mp4", "logging_level": "DEBUG", "cookies_file": ""}
+{
+    "use_year_subfolders": true,
+    "output_format": "mp4",
+    "logging_level": "DEBUG",
+    "cookies_file": "H:/My Drive/Downloads/www.youtube.com_cookies.txt"
+}

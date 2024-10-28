@@ -6,11 +6,11 @@ import time
 import random
 import requests
 import os
+import yt_dlp
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from yt_download_manager import YTDownloadManager
 from utils import clean_filename
-import yt_dlp
 
 class DownloadThread(QThread):
     """
@@ -55,6 +55,8 @@ class DownloadThread(QThread):
         self.is_stopped = False
         self.failed_urls = []
         self.download_counter = 0
+        self.total_items = 0
+        self.completed_items = 0
 
     def stop(self):
         """
@@ -68,95 +70,113 @@ class DownloadThread(QThread):
 
         It processes each URL, handles playlists, and manages download progress.
         """
-        self.total_items = 0  # Total number of items to download
-        self.completed_items = 0  # Number of items completed
-
         download_manager = YTDownloadManager(
             logger=self.logger,
             settings=self.settings,
             cookies_file=self.cookies_file
         )
 
+        all_video_urls = []
+
+        # Step 1: Extract all video URLs from the input URLs (handling playlists)
         for index, url in enumerate(self.urls, start=1):
             if self.is_stopped:
                 self.status_update.emit("Download stopped by user.")
                 break
 
             self.status_update.emit(
-                f"Processing URL {index}/{len(self.urls)}: {url}"
+                f"Extracting videos from URL {index}/{len(self.urls)}: {url}"
             )
 
             try:
-                # Extract metadata without downloading
-                ydl_opts = {
+                # Use extract_flat=True to get a list of video URLs without full metadata
+                ydl_opts_flat = {
                     'quiet': True,
                     'skip_download': True,
-                    'logger': self.logger,
+                    'extract_flat': True,  # Extract only video URLs
                     'ignoreerrors': True,
-                    'noplaylist': False,
-                    'extract_flat': False,
+                    'logger': self.logger,
                 }
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info_dict = ydl.extract_info(url, download=False)
+                with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl_flat:
+                    info_dict = ydl_flat.extract_info(url, download=False)
+
                     if info_dict is None:
                         self.logger.error(f"No metadata found for URL: {url}")
                         self.failed_urls.append({"url": url, "reason": "No metadata found."})
-                        self.completed_items += 1
-                        self.update_total_progress()
                         continue
 
-                    # Get channel name and base folder
-                    channel_name = clean_filename(info_dict.get("channel", info_dict.get("uploader", "Unknown_Channel")))
-                    base_folder = os.path.join(self.output_path, channel_name)
-                    os.makedirs(base_folder, exist_ok=True)
-
-                    # Determine the type of the URL (playlist or video)
-                    info_type = info_dict.get('_type', 'video')  # Defaults to 'video' if '_type' is None
+                    info_type = info_dict.get('_type', 'video')
 
                     if info_type == 'playlist':
-                        # Handle playlists
                         entries = info_dict.get('entries', [])
-                        if entries and entries[0] and isinstance(entries[0], dict) and entries[0].get('_type') == 'playlist':
-                            # List of playlists
-                            for playlist_entry in entries:
-                                if self.is_stopped:
-                                    break
-                                if playlist_entry is None:
-                                    self.logger.warning("Skipping a playlist because it's None.")
-                                    self.failed_urls.append({"url": url, "reason": "Playlist entry is None."})
-                                    self.completed_items += 1
-                                    self.update_total_progress()
-                                    continue
-                                self.process_playlist(playlist_entry, download_manager, base_folder)
-                        else:
-                            # Single playlist
-                            self.process_playlist(info_dict, download_manager, base_folder)
-                    elif info_type in ['video', None]:
-                        # Single video
-                        try:
-                            self.total_items += 1
-                            self.process_single_video(info_dict, download_manager, base_folder)
-                        except yt_dlp.utils.DownloadCancelled:
-                            self.logger.info("Download cancelled by user.")
-                            self.status_update.emit("Download stopped by user.")
-                            break
-                        except Exception as e:
-                            self.logger.error(f"Failed to download URL: {url}. Error: {e}")
-                            self.failed_urls.append({"url": url, "reason": str(e)})
-                        self.completed_items += 1
-                        self.update_total_progress()
+                        for entry in entries:
+                            if entry is None:
+                                # Entry is None, likely due to a private video
+                                # However, with extract_flat=True, entry should have 'url' even if inaccessible
+                                video_url = entry.get('url') if entry and 'url' in entry else 'Unknown URL'
+                                if video_url != 'Unknown URL':
+                                    self.failed_urls.append({"url": video_url, "reason": "Private"})
+                                    self.logger.warning(f"Private video detected. URL: {video_url}")
+                                else:
+                                    self.failed_urls.append({"url": url, "reason": "Private"})
+                                    self.logger.warning(f"Private video detected. URL: {url}")
+                            else:
+                                video_url = entry.get('url', 'Unknown URL')
+                                # Convert relative URLs to full URLs if necessary
+                                if not video_url.startswith('http'):
+                                    video_url = f"https://www.youtube.com/watch?v={video_url}"
+                                all_video_urls.append(video_url)
+                    elif info_type == 'video':
+                        video_url = info_dict.get('url', 'Unknown URL')
+                        all_video_urls.append(video_url)
                     else:
                         self.logger.warning(f"Unhandled type: {info_type} for URL: {url}")
                         self.failed_urls.append({"url": url, "reason": f"Unhandled type: {info_type}"})
             except Exception as e:
-                self.logger.error(f"Error processing URL '{url}': {e}")
+                self.logger.error(f"Error extracting URL '{url}': {e}")
                 self.logger.error(traceback.format_exc())
                 self.failed_urls.append({"url": url, "reason": str(e)})
+
+        self.total_items = len(all_video_urls)
+
+        # Step 2: Process each video URL individually
+        for i, video_url in enumerate(all_video_urls, start=1):
+            if self.is_stopped:
+                self.status_update.emit("Download stopped by user.")
+                break
+
+            self.status_update.emit(f"Downloading video {i}/{self.total_items}: {video_url}")
+
+            try:
+                # Extract full metadata for the video
+                ydl_opts_full = {
+                    'quiet': True,
+                    'skip_download': True,
+                    'ignoreerrors': True,
+                    'logger': self.logger,
+                }
+
+                with yt_dlp.YoutubeDL(ydl_opts_full) as ydl_full:
+                    video_info = ydl_full.extract_info(video_url, download=False)
+
+                    if video_info is None:
+                        # Video is private or inaccessible
+                        self.logger.error(f"Private video or inaccessible: {video_url}")
+                        self.failed_urls.append({"url": video_url, "reason": "Private"})
+                        self.completed_items += 1
+                        self.update_total_progress()
+                        continue
+
+                # Process the video
+                self.process_single_video(video_info, download_manager, self.output_path)
                 self.completed_items += 1
                 self.update_total_progress()
-            finally:
-                self.progress_update.emit(0)  # Reset individual progress bar
+            except Exception as e:
+                self.logger.error(f"Failed to download video '{video_url}': {e}")
+                self.failed_urls.append({"url": video_url, "reason": str(e)})
+                self.completed_items += 1
+                self.update_total_progress()
 
             # Cool-off every 10 video downloads
             self.download_counter += 1
@@ -183,43 +203,14 @@ class DownloadThread(QThread):
         else:
             self.total_progress_update.emit(0)
 
-    def process_playlist(self, playlist_info_dict: dict, download_manager: YTDownloadManager, base_folder: str):
-        """Process a playlist and download its entries."""
-        playlist_title = clean_filename(playlist_info_dict.get('title', 'Unknown_Playlist'))
-        playlist_folder = os.path.join(base_folder, playlist_title)
-        os.makedirs(playlist_folder, exist_ok=True)
-        entries = playlist_info_dict.get('entries', [])
-        self.total_items += len(entries)
-        for entry in entries:
-            if self.is_stopped:
-                break
-            if entry is None:
-                self.logger.warning("Skipping an entry in the playlist because it's None.")
-                self.failed_urls.append({"url": "Unknown Playlist Entry", "reason": "Entry is None."})
-                self.completed_items += 1
-                self.update_total_progress()
-                continue  # Skip this entry
-            try:
-                self.process_single_video(entry, download_manager, playlist_folder)
-            except yt_dlp.utils.DownloadCancelled:
-                self.logger.info("Download cancelled by user.")
-                self.status_update.emit("Download stopped by user.")
-                break
-            except Exception as e:
-                self.logger.error(f"Failed to download video in playlist: {e}")
-                video_url = entry.get('webpage_url', 'Unknown URL')
-                self.failed_urls.append({"url": video_url, "reason": str(e)})
-            self.completed_items += 1
-            self.update_total_progress()
-
     def process_single_video(self, info_dict: dict, download_manager: YTDownloadManager, base_folder: str):
-        """Process an individual video or playlist entry."""
+        """Process an individual video."""
         if self.is_stopped:
             raise yt_dlp.utils.DownloadCancelled()
         if info_dict is None:
-            self.logger.warning("Received None info_dict, skipping this video.")
-            return
-
+                self.logger.warning("Received None info_dict, skipping this video.")
+                return
+                
         title = info_dict.get('title', 'Unknown Title')
         description = info_dict.get('description', '')
         thumbnail_url = info_dict.get('thumbnail')
@@ -260,13 +251,18 @@ class DownloadThread(QThread):
                 output_template=output_template,
                 info_dict=info_dict,
                 progress_callback=self.progress_update.emit,
-                is_stopped=lambda: self.is_stopped  # Changed to pass a callable
+                is_stopped=self.is_stopped
             )
         except yt_dlp.utils.DownloadCancelled:
             self.logger.info(f"Download cancelled for video: {title}")
             self.status_update.emit("Download stopped by user.")
             raise  # Re-raise to allow higher-level handling
         except Exception as e:
-            self.logger.error(f"Failed to download video '{title}': {e}")
+            error_message = str(e)
+            if "Private video" in error_message:
+                reason = "Private video - access denied."
+            else:
+                reason = error_message
+            self.logger.error(f"Failed to download video '{title}': {reason}")
             video_url = info_dict.get('webpage_url', 'Unknown URL')
-            self.failed_urls.append({"url": video_url, "reason": str(e)})
+            self.failed_urls.append({"url": video_url, "reason": reason})
