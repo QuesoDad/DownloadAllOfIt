@@ -5,6 +5,34 @@ import yt_dlp
 from utils import clean_filename
 import json
 import time
+import logging
+
+def setup_logger():
+    # Create a logger object
+    logger = logging.getLogger('download_thread')
+    logger.setLevel(logging.DEBUG)  # Capture all levels of logs (DEBUG and above)
+
+    # Create console handler and set level to DEBUG
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+
+    # (Optional) Create file handler to save logs to a file
+    fh = logging.FileHandler('download_debug.log')
+    fh.setLevel(logging.DEBUG)
+
+    # Create formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+
+    # Add handlers to the logger
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+
+    return logger
+
+# Initialize the logger
+logger = setup_logger()
 
 class YTDownloadManager:
     """
@@ -167,7 +195,15 @@ class YTDownloadManager:
         # Include cookies if provided
         if self.cookies_file:
             ydl_opts['cookiefile'] = self.cookies_file
+            self.logger.debug(f"Using cookies file: {self.cookies_file}")
 
+        # Log the start of the download
+        self.logger.debug(f"Starting download for URL: {video_url}")
+        self.logger.debug(f"Output template: {output_template}")
+
+        # Log postprocessor hooks
+        self.logger.debug(f"Postprocessors: {ydl_opts.get('postprocessors')}")
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 ydl.download([video_url])

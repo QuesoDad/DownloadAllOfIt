@@ -1,0 +1,110 @@
+2024-10-29 02:20:01,703 - DEBUG - Cookies file found: F:/Google Drive Mirror/Downloads/cookies.txt
+2024-10-29 02:20:01,703 - DEBUG - Cookies file found: F:/Google Drive Mirror/Downloads/cookies.txt
+2024-10-29 02:20:01,743 - DEBUG - [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8, error utf-8, screen utf-8
+2024-10-29 02:20:01,743 - DEBUG - [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8, error utf-8, screen utf-8
+2024-10-29 02:20:01,743 - DEBUG - [debug] yt-dlp version stable@2024.08.06 from yt-dlp/yt-dlp [4d9231208] (pip) API
+2024-10-29 02:20:01,743 - DEBUG - [debug] yt-dlp version stable@2024.08.06 from yt-dlp/yt-dlp [4d9231208] (pip) API
+2024-10-29 02:20:01,744 - DEBUG - [debug] params: {'quiet': False, 'verbose': True, 'skip_download': True, 'extract_flat': True, 'ignoreerrors': True, 'logger': <Logger download_thread (DEBUG)>, 'compat_opts': set(), 'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.18 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-us,en;q=0.5', 'Sec-Fetch-Mode': 'navigate'}}
+2024-10-29 02:20:01,744 - DEBUG - [debug] params: {'quiet': False, 'verbose': True, 'skip_download': True, 'extract_flat': True, 'ignoreerrors': True, 'logger': <Logger download_thread (DEBUG)>, 'compat_opts': set(), 'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.18 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-us,en;q=0.5', 'Sec-Fetch-Mode': 'navigate'}}
+2024-10-29 02:20:01,746 - DEBUG - [debug] Python 3.12.4 (CPython AMD64 64bit) - Windows-11-10.0.22631-SP0 (OpenSSL 3.0.13 30 Jan 2024)
+2024-10-29 02:20:01,746 - DEBUG - [debug] Python 3.12.4 (CPython AMD64 64bit) - Windows-11-10.0.22631-SP0 (OpenSSL 3.0.13 30 Jan 2024)
+2024-10-29 02:20:01,771 - DEBUG - [debug] exe versions: ffmpeg 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev (setts), ffprobe 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev
+2024-10-29 02:20:01,771 - DEBUG - [debug] exe versions: ffmpeg 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev (setts), ffprobe 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev
+2024-10-29 02:20:01,772 - DEBUG - [debug] Optional libraries: Cryptodome-3.20.0, brotli-1.1.0, certifi-2024.06.02, mutagen-1.47.0, requests-2.32.3, sqlite3-3.45.3, urllib3-2.2.1, websockets-13.0.1
+2024-10-29 02:20:01,772 - DEBUG - [debug] Optional libraries: Cryptodome-3.20.0, brotli-1.1.0, certifi-2024.06.02, mutagen-1.47.0, requests-2.32.3, sqlite3-3.45.3, urllib3-2.2.1, websockets-13.0.1
+2024-10-29 02:20:01,772 - DEBUG - [debug] Proxy map: {}
+2024-10-29 02:20:01,772 - DEBUG - [debug] Proxy map: {}
+2024-10-29 02:20:01,773 - DEBUG - [debug] Request Handlers: urllib, requests, websockets
+2024-10-29 02:20:01,773 - DEBUG - [debug] Request Handlers: urllib, requests, websockets
+2024-10-29 02:20:01,794 - DEBUG - [debug] Loaded 1830 extractors
+2024-10-29 02:20:01,794 - DEBUG - [debug] Loaded 1830 extractors
+2024-10-29 02:20:01,813 - DEBUG - [youtube] Extracting URL: https://youtu.be/otQ-e8SRpRI
+2024-10-29 02:20:01,813 - DEBUG - [youtube] Extracting URL: https://youtu.be/otQ-e8SRpRI
+2024-10-29 02:20:01,813 - DEBUG - [youtube] otQ-e8SRpRI: Downloading webpage
+2024-10-29 02:20:01,813 - DEBUG - [youtube] otQ-e8SRpRI: Downloading webpage
+2024-10-29 02:20:02,179 - DEBUG - [youtube] otQ-e8SRpRI: Downloading ios player API JSON
+2024-10-29 02:20:02,179 - DEBUG - [youtube] otQ-e8SRpRI: Downloading ios player API JSON
+2024-10-29 02:20:02,276 - DEBUG - [youtube] otQ-e8SRpRI: Downloading web creator player API JSON
+2024-10-29 02:20:02,276 - DEBUG - [youtube] otQ-e8SRpRI: Downloading web creator player API JSON
+2024-10-29 02:20:02,376 - ERROR - [0;31mERROR:[0m [youtube] otQ-e8SRpRI: Private video. Sign in if you've been granted access to this video
+2024-10-29 02:20:02,376 - ERROR - [0;31mERROR:[0m [youtube] otQ-e8SRpRI: Private video. Sign in if you've been granted access to this video
+2024-10-29 02:20:02,376 - ERROR -   File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 740, in extract
+    ie_result = self._real_extract(url)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\youtube.py", line 4358, in _real_extract
+    self.raise_no_formats(reason, expected=True)
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 1263, in raise_no_formats
+    raise ExtractorError(msg, expected=expected, video_id=video_id)
+
+2024-10-29 02:20:02,376 - ERROR -   File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 740, in extract
+    ie_result = self._real_extract(url)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\youtube.py", line 4358, in _real_extract
+    self.raise_no_formats(reason, expected=True)
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 1263, in raise_no_formats
+    raise ExtractorError(msg, expected=expected, video_id=video_id)
+
+2024-10-29 02:20:02,432 - ERROR - No metadata found for URL: https://youtu.be/otQ-e8SRpRI
+2024-10-29 02:20:02,432 - ERROR - No metadata found for URL: https://youtu.be/otQ-e8SRpRI
+2024-10-29 02:27:33,654 - DEBUG - Cookies file found: F:/Google Drive Mirror/Downloads/cookies.txt
+2024-10-29 02:27:33,654 - DEBUG - Cookies file found: F:/Google Drive Mirror/Downloads/cookies.txt
+2024-10-29 02:27:33,655 - DEBUG - [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8, error utf-8, screen utf-8
+2024-10-29 02:27:33,655 - DEBUG - [debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8, error utf-8, screen utf-8
+2024-10-29 02:27:33,655 - DEBUG - [debug] yt-dlp version stable@2024.08.06 from yt-dlp/yt-dlp [4d9231208] (pip) API
+2024-10-29 02:27:33,655 - DEBUG - [debug] yt-dlp version stable@2024.08.06 from yt-dlp/yt-dlp [4d9231208] (pip) API
+2024-10-29 02:27:33,656 - DEBUG - [debug] params: {'quiet': False, 'verbose': True, 'skip_download': True, 'extract_flat': True, 'ignoreerrors': True, 'logger': <Logger download_thread (DEBUG)>, 'compat_opts': set(), 'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.18 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-us,en;q=0.5', 'Sec-Fetch-Mode': 'navigate'}}
+2024-10-29 02:27:33,656 - DEBUG - [debug] params: {'quiet': False, 'verbose': True, 'skip_download': True, 'extract_flat': True, 'ignoreerrors': True, 'logger': <Logger download_thread (DEBUG)>, 'compat_opts': set(), 'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.18 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-us,en;q=0.5', 'Sec-Fetch-Mode': 'navigate'}}
+2024-10-29 02:27:33,656 - DEBUG - [debug] Python 3.12.4 (CPython AMD64 64bit) - Windows-11-10.0.22631-SP0 (OpenSSL 3.0.13 30 Jan 2024)
+2024-10-29 02:27:33,656 - DEBUG - [debug] Python 3.12.4 (CPython AMD64 64bit) - Windows-11-10.0.22631-SP0 (OpenSSL 3.0.13 30 Jan 2024)
+2024-10-29 02:27:33,659 - DEBUG - [debug] exe versions: ffmpeg 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev (setts), ffprobe 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev
+2024-10-29 02:27:33,659 - DEBUG - [debug] exe versions: ffmpeg 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev (setts), ffprobe 2024-05-20-git-127ded5078-essentials_build-www.gyan.dev
+2024-10-29 02:27:33,659 - DEBUG - [debug] Optional libraries: Cryptodome-3.20.0, brotli-1.1.0, certifi-2024.06.02, mutagen-1.47.0, requests-2.32.3, sqlite3-3.45.3, urllib3-2.2.1, websockets-13.0.1
+2024-10-29 02:27:33,659 - DEBUG - [debug] Optional libraries: Cryptodome-3.20.0, brotli-1.1.0, certifi-2024.06.02, mutagen-1.47.0, requests-2.32.3, sqlite3-3.45.3, urllib3-2.2.1, websockets-13.0.1
+2024-10-29 02:27:33,659 - DEBUG - [debug] Proxy map: {}
+2024-10-29 02:27:33,659 - DEBUG - [debug] Proxy map: {}
+2024-10-29 02:27:33,660 - DEBUG - [debug] Request Handlers: urllib, requests, websockets
+2024-10-29 02:27:33,660 - DEBUG - [debug] Request Handlers: urllib, requests, websockets
+2024-10-29 02:27:33,681 - DEBUG - [debug] Loaded 1830 extractors
+2024-10-29 02:27:33,681 - DEBUG - [debug] Loaded 1830 extractors
+2024-10-29 02:27:33,962 - DEBUG - [generic] Extracting URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+2024-10-29 02:27:33,962 - DEBUG - [generic] Extracting URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+2024-10-29 02:27:33,962 - DEBUG - [generic] belinda-1: Downloading webpage
+2024-10-29 02:27:33,962 - DEBUG - [generic] belinda-1: Downloading webpage
+2024-10-29 02:27:34,792 - WARNING - [generic] Falling back on generic information extractor
+2024-10-29 02:27:34,792 - WARNING - [generic] Falling back on generic information extractor
+2024-10-29 02:27:35,046 - DEBUG - [generic] belinda-1: Extracting information
+2024-10-29 02:27:35,046 - DEBUG - [generic] belinda-1: Extracting information
+2024-10-29 02:27:35,049 - DEBUG - [debug] Looking for embeds
+2024-10-29 02:27:35,049 - DEBUG - [debug] Looking for embeds
+2024-10-29 02:27:35,471 - ERROR - [0;31mERROR:[0m Unsupported URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+2024-10-29 02:27:35,471 - ERROR - [0;31mERROR:[0m Unsupported URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+2024-10-29 02:27:35,473 - ERROR - Traceback (most recent call last):
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\YoutubeDL.py", line 1626, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\YoutubeDL.py", line 1761, in __extract_info
+    ie_result = ie.extract(url)
+                ^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 740, in extract
+    ie_result = self._real_extract(url)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\generic.py", line 2526, in _real_extract
+    raise UnsupportedError(url)
+yt_dlp.utils.UnsupportedError: Unsupported URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+
+2024-10-29 02:27:35,473 - ERROR - Traceback (most recent call last):
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\YoutubeDL.py", line 1626, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\YoutubeDL.py", line 1761, in __extract_info
+    ie_result = ie.extract(url)
+                ^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\common.py", line 740, in extract
+    ie_result = self._real_extract(url)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\kboru\AppData\Local\Programs\Python\Python312\Lib\site-packages\yt_dlp\extractor\generic.py", line 2526, in _real_extract
+    raise UnsupportedError(url)
+yt_dlp.utils.UnsupportedError: Unsupported URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+
+2024-10-29 02:27:35,474 - ERROR - No metadata found for URL: https://www.camwhores.tv/videos/8180470/belinda-1/
+2024-10-29 02:27:35,474 - ERROR - No metadata found for URL: https://www.camwhores.tv/videos/8180470/belinda-1/
