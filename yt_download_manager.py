@@ -6,12 +6,18 @@ from utils import clean_filename
 import json
 import time
 import logging
+import subprocess
+import shutil
+import mutagen
+from mutagen.mp4 import MP4, MP4Cover
+from PIL import Image  # Added for image conversion
 
 def setup_logger():
     # Create a logger object
     logger = logging.getLogger('download_thread')
     logger.setLevel(logging.DEBUG)  # Capture all levels of logs (DEBUG and above)
-
+    logging.basicConfig(encoding='utf-8')
+    
     # Create console handler and set level to DEBUG
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -47,6 +53,102 @@ class YTDownloadManager:
         self.settings = settings
         self.cookies_file = cookies_file
 
+    def convert_thumbnail_to_png(self, thumbnail_filepath):
+        """
+        Convert the given thumbnail to PNG format.
+
+        Args:
+            thumbnail_filepath (str): Path to the thumbnail file to convert.
+
+        Returns:
+            str: Path to the converted PNG file.
+        """
+        png_thumbnail_filepath = thumbnail_filepath.rsplit('.', 1)[0] + '.png'
+        try:
+            with Image.open(thumbnail_filepath) as img:
+                img.save(png_thumbnail_filepath, 'PNG')
+            self.logger.debug(f"Thumbnail converted to PNG: {png_thumbnail_filepath}")
+            return png_thumbnail_filepath
+        except Exception as e:
+            self.logger.error(f"Failed to convert thumbnail to PNG: {e}")
+            return None
+
+    def add_description_to_video(self, video_filepath, description_filepath, info_dict):
+        """
+        Adds the content of a description file as metadata (comments) in the video file.
+        """
+        # Existing title, uploader, and description processing
+        video_title = info_dict.get("title", "Unknown Title")
+        uploader_name = info_dict.get("uploader", "Unknown Uploader")
+        
+        with open(description_filepath, "r", encoding="utf-8") as file:
+            description_content = file.read()
+
+        # Define temporary output file
+        output_filepath = video_filepath + "_temp_with_comments.mp4"
+        command = [
+            "ffmpeg",
+            "-i", video_filepath,
+            "-y",
+            "-metadata", f"title={video_title}",
+            "-metadata", f"author={uploader_name}",
+            "-metadata", f"comment={description_content}",
+            "-metadata", f"description={description_content}",
+            "-c", "copy",
+            output_filepath
+        ]
+        
+        try:
+            subprocess.run(command, check=True)
+            if os.path.exists(output_filepath):
+                os.replace(output_filepath, video_filepath)
+                self.logger.debug(f"Description metadata added to: {video_filepath}")
+                
+                # Embed thumbnail using Mutagen after FFmpeg metadata
+                self.embed_thumbnail(video_filepath)
+            else:
+                self.logger.error(f"Failed to create output file: {output_filepath}")
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Error embedding description: {e}")
+        except mutagen.MutagenError as e:
+            self.logger.error(f"Error embedding thumbnail: {e}")
+    
+    def embed_thumbnail(self, video_filepath):
+        """
+        Embeds the thumbnail into the video file using Mutagen.
+
+        Args:
+            video_filepath (str): Path to the video file (e.g., `.mp4`).
+        """
+        # Attempt to find the thumbnail file with various extensions
+        possible_extensions = ['.png', '.jpg', '.jpeg', '.webp']
+        thumbnail_filepath = None
+        for ext in possible_extensions:
+            temp_thumbnail_filepath = video_filepath.replace('.mp4', ext)
+            if os.path.exists(temp_thumbnail_filepath):
+                # Convert the thumbnail to PNG if it's not already
+                if ext != '.png':
+                    png_thumbnail_filepath = self.convert_thumbnail_to_png(temp_thumbnail_filepath)
+                    if png_thumbnail_filepath:
+                        thumbnail_filepath = png_thumbnail_filepath
+                        break
+                else:
+                    thumbnail_filepath = temp_thumbnail_filepath
+                    break
+        
+        if thumbnail_filepath and os.path.exists(thumbnail_filepath):
+            try:
+                video = MP4(video_filepath)
+                with open(thumbnail_filepath, "rb") as img_file:
+                    video["covr"] = [MP4Cover(img_file.read(), imageformat=MP4Cover.FORMAT_PNG)]
+                video.save()
+                self.logger.debug(f"Thumbnail embedded successfully into: {video_filepath}")
+            except mutagen.MutagenError as e:
+                self.logger.error(f"Error embedding thumbnail with Mutagen: {e}")
+        else:
+            self.logger.warning(f"No valid thumbnail file found for embedding. Expected formats: {possible_extensions}")
+
     def download_video(self, video_url, output_template, info_dict, progress_callback=None, is_stopped=None):
         """
         Simplified download method using yt-dlp's built-in features.
@@ -81,9 +183,13 @@ class YTDownloadManager:
                 info_dict = d['info_dict']
                 video_filepath = info_dict['filepath']
                 video_basename = os.path.splitext(video_filepath)[0]
-                thumbnail_filepath = video_basename + '.png'
                 metadata_filepath = video_basename + '.txt'
-
+                metadata_json_filepath = video_basename + '.info.json'
+                description_filepath = video_filepath.replace('.mp4', '.description')
+                
+                if os.path.exists(description_filepath):
+                    self.add_description_to_video(video_filepath, description_filepath, d['info_dict'])
+                
                 # Save metadata and URL
                 original_url = info_dict.get('original_url', video_url)
                 metadata_text = self.prepare_metadata(info_dict, original_url)
@@ -94,7 +200,15 @@ class YTDownloadManager:
                 # Set modification times
                 upload_timestamp = info_dict.get('timestamp')
                 if upload_timestamp:
-                    self.set_file_times([video_filepath, thumbnail_filepath, metadata_filepath], upload_timestamp)
+                    files_to_update = [
+                        video_filepath,
+                        video_basename + '.png',  # Assuming thumbnail is PNG
+                        metadata_filepath,
+                        metadata_json_filepath,
+                        description_filepath
+                    ]
+                    # Apply the timestamp
+                    self.set_file_times(files_to_update, upload_timestamp)
                 else:
                     self.logger.warning("Upload timestamp not available; file modification times not updated.")
 
@@ -112,8 +226,8 @@ class YTDownloadManager:
             'writethumbnail': True,
             'writedescription': True,
             'writeinfojson': True,
-            'embedmetadata': True,
-            'embedthumbnail': True,  # Embed thumbnail
+            'embedmetadata': False,  # Disable yt-dlp's embed metadata since handled manually
+            'embedthumbnail': False,  # Disable yt-dlp's embed thumbnail
             'postprocessors': [
                 {
                     'key': 'FFmpegEmbedSubtitle',
@@ -258,12 +372,14 @@ class YTDownloadManager:
 
     def set_file_times(self, filepaths, timestamp):
         """
-        Update file modification times based on video upload timestamp.
-
+        Update file modification times to match the upload timestamp.
+        
         :param filepaths: List of file paths to update.
-        :param timestamp: Unix timestamp to set as the file modification time.
+        :param timestamp: Unix timestamp to set as the modification time.
         """
         times = (timestamp, timestamp)
         for filepath in filepaths:
-            if os.path.exists(filepath):
+            if os.path.exists(filepath):  # Only set times if the file exists
                 os.utime(filepath, times)
+            else:
+                self.logger.debug(f"File not found for time update: {filepath}")

@@ -1,3 +1,12 @@
 cookies.txt
 app.log
 .vscode/settings.json
+download_debug.log
+__pycache__/dialogs.cpython-312.pyc
+__pycache__/download_thread.cpython-312.pyc
+__pycache__/gui_interface.cpython-312.pyc
+__pycache__/log_handler.cpython-312.pyc
+__pycache__/utils.cpython-312.pyc
+__pycache__/yt_download_manager.cpython-312.pyc
+__pycache__/dialogs.cpython-312.pyc
+download_debug.log

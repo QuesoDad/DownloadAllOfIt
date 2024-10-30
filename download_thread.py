@@ -81,12 +81,18 @@ class DownloadThread(QThread):
         """
         super().__init__()  # Initialize the parent QThread class
 
+        
         # Store the provided arguments as instance variables
         self.urls = urls
         self.output_path = output_path
         self.settings = settings
         self.cookies_file = cookies_file
-
+        
+        # Initialize the download manager and log the command options
+        logger.debug("Initializing YTDownloadManager with the following options:")
+        logger.debug(f"Output Path: {self.output_path}")
+        logger.debug(f"Cookies File: {self.cookies_file}")
+        
         # Set up a logger for logging messages, errors, and debug information
         self.logger = logging.getLogger(__name__)
 
@@ -134,7 +140,6 @@ class DownloadThread(QThread):
             else:
                 self.logger.debug(f"Cookies file found: {self.cookies_file}")
         
-        # Initialize the download manager with the provided settings and cookies file
         download_manager = YTDownloadManager(
             logger=self.logger,
             settings=self.settings,
@@ -166,6 +171,12 @@ class DownloadThread(QThread):
                     'ignoreerrors': True,       # Ignore errors and continue
                     'logger': self.logger,      # Use the custom logger
                 }
+                
+                if self.cookies_file:
+                    ydl_opts_flat['cookiefile'] = self.cookies_file
+                    self.logger.debug(f"Using cookies file for flat extraction: {self.cookies_file}")
+                
+                self.logger.debug(f"yt_dlp options for flat extraction: {ydl_opts_flat}")
 
                 # Use yt_dlp to extract information about the provided URL
                 with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl_flat:
@@ -258,7 +269,7 @@ class DownloadThread(QThread):
                         continue  # Move to the next video
 
                 # Process and download the video using the download manager
-                self.process_single_video(video_info, download_manager, self.output_path)
+                self.process_single_video(video_info, download_manager, self.output_path, video_url)
                 self.completed_items += 1  # Increment the count of completed downloads
                 self.update_total_progress()  # Update the overall progress bar
             except Exception as e:
@@ -303,7 +314,7 @@ class DownloadThread(QThread):
             # If there are no items to download, set progress to 0%
             self.total_progress_update.emit(0)
 
-    def process_single_video(self, info_dict: dict, download_manager: YTDownloadManager, base_folder: str):
+    def process_single_video(self, info_dict: dict, download_manager: YTDownloadManager, base_folder: str, video_url: str):
         """
         Process an individual video by downloading it and handling its metadata.
 
@@ -403,6 +414,6 @@ class DownloadThread(QThread):
             # Log the failure reason
             self.logger.error(f"Failed to download video '{title}': {reason}")
             # Extract the video's webpage URL for reference
-            video_url = info_dict.get('webpage_url', 'Unknown URL')
+            #video_url = info_dict.get('webpage_url', 'Unknown URL')
             # Record the failed download with its reason
             self.failed_urls.append({"url": video_url, "reason": reason})
