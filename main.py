@@ -1,4 +1,4 @@
-# main_v4.py
+# main.py
 
 import sys
 from PyQt5 import QtWidgets
