@@ -231,7 +231,7 @@ class YTDownloadManager:
             'postprocessors': [
                 {
                     'key': 'FFmpegEmbedSubtitle',
-                    'already_have_subtitle': False,
+                    'already_have_subtitle': True,
                 },
                 {
                     'key': 'FFmpegMetadata',
@@ -239,9 +239,6 @@ class YTDownloadManager:
                 {
                     'key': 'FFmpegThumbnailsConvertor',
                     'format': 'png',
-                },
-                {
-                    'key': 'EmbedThumbnail',
                 },
             ],
         }
@@ -269,7 +266,7 @@ class YTDownloadManager:
                 'postprocessors': [
                     {
                         'key': 'FFmpegEmbedSubtitle',
-                        'already_have_subtitle': False,
+                        'already_have_subtitle': True,
                     },
                     {
                         'key': 'FFmpegMetadata',
@@ -277,9 +274,6 @@ class YTDownloadManager:
                     {
                         'key': 'FFmpegThumbnailsConvertor',
                         'format': 'png',
-                    },
-                    {
-                        'key': 'EmbedThumbnail',
                     },
                 ],
             })
@@ -291,7 +285,7 @@ class YTDownloadManager:
                 'postprocessors': [
                     {
                         'key': 'FFmpegEmbedSubtitle',
-                        'already_have_subtitle': False,
+                        'already_have_subtitle': True,
                     },
                     {
                         'key': 'FFmpegMetadata',
@@ -299,9 +293,6 @@ class YTDownloadManager:
                     {
                         'key': 'FFmpegThumbnailsConvertor',
                         'format': 'png',
-                    },
-                    {
-                        'key': 'EmbedThumbnail',
                     },
                 ],
             })
