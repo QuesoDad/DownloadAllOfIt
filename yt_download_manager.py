@@ -1,43 +1,16 @@
 # yt_download_manager.py
 
 import os
+import json
+from pathlib import Path
 import yt_dlp
 from utils import clean_filename
-import json
 import time
 import logging
 import subprocess
 import mutagen
 from mutagen.mp4 import MP4, MP4Cover
 from PIL import Image  # Added for image conversion
-
-def setup_logger():
-    # Create a logger object
-    logger = logging.getLogger('download_thread')
-    logger.setLevel(logging.DEBUG)  # Capture all levels of logs (DEBUG and above)
-    logging.basicConfig(encoding='utf-8')
-    
-    # Create console handler and set level to DEBUG
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-
-    # (Optional) Create file handler to save logs to a file
-    fh = logging.FileHandler('download_debug.log')
-    fh.setLevel(logging.DEBUG)
-
-    # Create formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
-
-    # Add handlers to the logger
-    logger.addHandler(ch)
-    logger.addHandler(fh)
-
-    return logger
-
-# Initialize the logger
-logger = setup_logger()
 
 class YTDownloadManager:
     """
@@ -51,7 +24,29 @@ class YTDownloadManager:
         self.logger = logger
         self.settings = settings
         self.cookies_file = cookies_file
+        # Define the metadata file path for downloaded files
+        self.downloaded_metadata_file = Path(settings.get("metadata_file", "downloaded_files.json"))
+        # Load previously downloaded files into a dictionary
+        self.downloaded_files = self.load_downloaded_files()
 
+    def load_downloaded_files(self):
+        """Load previously downloaded file metadata from JSON."""
+        if self.downloaded_metadata_file.exists():
+            try:
+                with self.downloaded_metadata_file.open("r") as file:
+                    return json.load(file)
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Failed to load metadata file: {e}")
+        return {}
+
+    def save_downloaded_file(self, video_url, output_file_path):
+        """Save downloaded file info to metadata JSON after a successful download."""
+        self.downloaded_files[video_url] = output_file_path
+        with self.downloaded_metadata_file.open("w") as file:
+            json.dump(self.downloaded_files, file, indent=4)
+        self.logger.debug(f"Updated metadata with downloaded file: {output_file_path}")
+
+    
     def convert_thumbnail_to_png(self, thumbnail_filepath):
         """
         Convert the given thumbnail to PNG format.
@@ -158,6 +153,14 @@ class YTDownloadManager:
         :param progress_callback: Function to call to update progress.
         :param is_stopped: Function to check if the download should be stopped.
         """
+        output_file_path = output_template % {"ext": "mp4"}  # Adjust if necessary for other formats
+        
+        # Check if this video was downloaded already, using metadata or file existence
+        if video_url in self.downloaded_files or Path(output_file_path).exists():
+            self.logger.info(f"File for URL {video_url} already downloaded, skipping.")
+            return  # Skip download
+        
+        
         def progress_hook(d):
             """Hook function to monitor download progress."""
             if is_stopped and is_stopped():
@@ -316,6 +319,9 @@ class YTDownloadManager:
             except Exception as e:
                 self.logger.error(f"Unexpected error during download of {video_url}: {e}")
                 raise
+        
+        # After successful download, save the information
+        self.save_downloaded_file(video_url, output_file_path)
 
     def prepare_metadata(self, info_dict, original_url):
         """
