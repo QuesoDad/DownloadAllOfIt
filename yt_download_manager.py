@@ -7,7 +7,6 @@ import json
 import time
 import logging
 import subprocess
-import shutil
 import mutagen
 from mutagen.mp4 import MP4, MP4Cover
 from PIL import Image  # Added for image conversion
