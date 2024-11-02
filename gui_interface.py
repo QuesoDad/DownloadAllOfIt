@@ -3,6 +3,7 @@
 import os
 import logging
 import subprocess
+from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QLabel, QTextEdit, QProgressBar,
@@ -91,8 +92,8 @@ class YTDownloadApp(QtWidgets.QWidget):
             self.url_input.setText('\n'.join(test_urls))
             if not self.output_folder:
                 # If no output folder is set, create a 'test_downloads' folder in the current working directory
-                self.output_folder = os.path.join(os.getcwd(), 'test_downloads')
-                os.makedirs(self.output_folder, exist_ok=True)
+                self.output_folder = Path.cwd() / 'test_downloads'
+                self.output_folder.mkdir(parents=True, exist_ok=True)
                 # Update the output folder label to show the selected folder
                 self.output_label.setText(f"{self.tr('Selected folder')}: {self.output_folder}")
             # Automatically start the download process
@@ -248,20 +249,16 @@ class YTDownloadApp(QtWidgets.QWidget):
         Save the selected folder path to settings and update the label in the GUI.
         """
         # Determine the initial directory for the dialog; use the last selected folder or the user's home directory
-        initial_dir = self.output_folder or os.path.expanduser("~")
+        initial_dir = self.output_folder if self.output_folder else Path.home()
         # Open a directory selection dialog
-        folder = QFileDialog.getExistingDirectory(
-            self, 
-            self.tr("Select Output Folder"), 
-            initial_dir
-        )
+        folder = QFileDialog.getExistingDirectory(self, self.tr("Select Output Folder"), str(initial_dir))
         if folder:
             # If a folder is selected, update the output_folder attribute
-            self.output_folder = folder
+            self.output_folder = Path(folder)
             # Update the label to display the selected folder
             self.output_label.setText(f"{self.tr('Selected folder')}: {folder}")
             # Save the selected folder path to settings for future use
-            save_last_directory(folder)
+            save_last_directory(str(folder))
 
     def select_cookies_file(self):
         """
@@ -281,11 +278,11 @@ class YTDownloadApp(QtWidgets.QWidget):
         )
         if file_name:
             # If a file is selected, update the cookies_file attribute
-            self.cookies_file = file_name
+            self.cookies_file = Path(file_name)
             # Update the label to display the selected cookies file
             self.cookies_label.setText(f"{self.tr('Cookies file')}: {file_name}")
             # Save the selected cookies file path to settings
-            self.settings['cookies_file'] = file_name
+            self.settings['cookies_file'] = str(file_name)
             save_settings(self.settings)
 
     def on_start_download_clicked(self):
