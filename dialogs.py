@@ -123,38 +123,76 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.format_combo)  # Add the ComboBox to the layout
 
         # ------------------------
-        # Option 3: Logging Level Selection
+        # Option 3: Download Quality
         # ------------------------
-        # Label for the logging level selection
-        logging_level_label = QLabel(self.tr("Logging Level:"))
-        layout.addWidget(logging_level_label)  # Add the label to the layout
+        download_quality_label = QLabel(self.tr("Download Quality:"))
+        layout.addWidget(download_quality_label)
 
-        # ComboBox for selecting the desired logging level
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(['best', 'worst', 'highest', 'lowest', 'highestvideo', 'highestaudio'])
+        current_quality = self.settings.get('download_quality', 'best')
+        index = self.quality_combo.findText(current_quality)
+        if index >= 0:
+            self.quality_combo.setCurrentIndex(index)
+        layout.addWidget(self.quality_combo)
+
+        # ------------------------
+        # Option 4: Download Subtitles
+        # ------------------------
+        self.download_subtitles_checkbox = QCheckBox(
+            self.tr("Download Subtitles")
+        )
+        self.download_subtitles_checkbox.setChecked(
+            self.settings.get('download_subtitles', False)
+        )
+        layout.addWidget(self.download_subtitles_checkbox)
+
+        # ------------------------
+        # Option 5: Metadata Embedding
+        # ------------------------
+        metadata_label = QLabel(self.tr("Metadata to Embed:"))
+        layout.addWidget(metadata_label)
+
+        self.metadata_tags = {
+            'Title': QCheckBox(self.tr("Title")),
+            'Uploader': QCheckBox(self.tr("Uploader")),
+            'Description': QCheckBox(self.tr("Description")),
+            'Tags': QCheckBox(self.tr("Tags")),
+            'License': QCheckBox(self.tr("License")),
+            # Add more metadata fields as needed
+        }
+
+        for tag, checkbox in self.metadata_tags.items():
+            checkbox.setChecked(
+                self.settings.get(f'embed_{tag.lower()}', True)
+            )
+            layout.addWidget(checkbox)
+
+        # ------------------------
+        # Option 6: Logging Level Selection
+        # ------------------------
+        logging_level_label = QLabel(self.tr("Logging Level:"))
+        layout.addWidget(logging_level_label)
+
         self.logging_combo = QComboBox()
-        # Populate the ComboBox with available logging levels
         self.logging_combo.addItems(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
-        # Retrieve the current logging level from settings; default to 'DEBUG' if not set
         current_level = self.settings.get('logging_level', 'DEBUG')
-        # Find the index of the current logging level in the ComboBox
         index = self.logging_combo.findText(current_level)
         if index >= 0:
-            self.logging_combo.setCurrentIndex(index)  # Set the ComboBox to the current logging level
-        layout.addWidget(self.logging_combo)  # Add the ComboBox to the layout
+            self.logging_combo.setCurrentIndex(index)
+        layout.addWidget(self.logging_combo)
 
         # ------------------------
-        # Dialog Buttons: Save and Cancel
+        # Save and Cancel Buttons
         # ------------------------
-        # Create a QDialogButtonBox with Save and Cancel buttons
         button_box = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
         )
-        # Connect the Save button to the save_settings method
         button_box.accepted.connect(self.save_settings)
-        # Connect the Cancel button to reject (close without saving)
         button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)  # Add the button box to the layout
+        layout.addWidget(button_box)
 
-        self.setLayout(layout)  # Apply the layout to the dialog
+        self.setLayout(layout)
 
     def save_settings(self):
         """
@@ -163,13 +201,14 @@ class SettingsDialog(QDialog):
         This method updates the settings dictionary based on the user's selections
         in the dialog and closes the dialog with an accepted status.
         """
-        # Update the 'use_year_subfolders' setting based on the checkbox state
         self.settings['use_year_subfolders'] = self.year_subfolders_checkbox.isChecked()
-        # Update the 'output_format' setting based on the ComboBox selection
         self.settings['output_format'] = self.format_combo.currentText()
-        # Update the 'logging_level' setting based on the ComboBox selection
+        self.settings['download_quality'] = self.quality_combo.currentText()
+        self.settings['download_subtitles'] = self.download_subtitles_checkbox.isChecked()
+        for tag, checkbox in self.metadata_tags.items():
+            self.settings[f'embed_{tag.lower()}'] = checkbox.isChecked()
         self.settings['logging_level'] = self.logging_combo.currentText()
-        self.accept()  # Close the dialog with an accepted status
+        self.accept()
 
     def get_settings(self) -> dict:
         """

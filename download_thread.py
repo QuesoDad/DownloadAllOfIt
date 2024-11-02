@@ -5,40 +5,16 @@ import traceback
 import time
 import random
 import requests
-import os
 import yt_dlp
 from pathlib import Path
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from yt_download_manager import YTDownloadManager
 from utils import clean_filename
+from typing import List, Dict, Any
 
-def setup_logger():
-    # Create a logger object
-    logger = logging.getLogger('download_thread')
-    logger.setLevel(logging.DEBUG)  # Capture all levels of logs (DEBUG and above)
-
-    # Create console handler and set level to DEBUG
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-
-    # (Optional) Create file handler to save logs to a file
-    fh = logging.FileHandler('download_debug.log')
-    fh.setLevel(logging.DEBUG)
-
-    # Create formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
-
-    # Add handlers to the logger
-    logger.addHandler(ch)
-    logger.addHandler(fh)
-
-    return logger
-
-# Initialize the logger
-logger = setup_logger()
+# Obtain logger from the root logger configured in utils.py
+logger = logging.getLogger(__name__)
 
 class DownloadThread(QThread):
     """
@@ -55,7 +31,7 @@ class DownloadThread(QThread):
         current_video_update (str): Emits the title of the current video being downloaded.
         update_thumbnail (QPixmap): Emits the thumbnail image of the current video.
         update_description (str): Emits the description of the current video.
-        finished (): Emits when the download process is finished.
+        finished (): Emits when all downloads are done.
         failed_downloads_signal (list): Emits a list of failed download URLs with reasons.
     """
 
@@ -69,35 +45,36 @@ class DownloadThread(QThread):
     finished = pyqtSignal()                    # When all downloads are done
     failed_downloads_signal = pyqtSignal(list) # When there are failed downloads
 
-    def __init__(self, urls: list, output_path: str, settings: dict, cookies_file: str = None):
+    def __init__(self, urls: List[str], output_path: Path, settings: Dict[str, Any], cookies_file: Path = None):
         """
         Initialize the DownloadThread.
 
         Args:
-            urls (list): A list of video or playlist URLs to download.
-            output_path (str): The directory where downloads will be saved.
-            settings (dict): Application settings.
-            cookies_file (str, optional): Path to the cookies file. Defaults to None.
+            urls (List[str]): A list of video or playlist URLs to download.
+            output_path (Path): The directory where downloads will be saved.
+            settings (Dict[str, Any]): Application settings.
+            cookies_file (Path, optional): Path to the cookies file. Defaults to None.
         """
         super().__init__()  # Initialize the parent QThread class
 
+        # Set up a logger for logging messages, errors, and debug information
+        self.logger = logger
         
         # Store the provided arguments as instance variables
         self.urls = urls
         self.output_path = output_path
         self.settings = settings
         self.cookies_file = cookies_file
+        # Ensure cookies_file is a Path object
+        self.cookies_file = Path(cookies_file) if cookies_file else None
         
         # Initialize the download manager and log the command options
-        logger.debug("Initializing YTDownloadManager with the following options:")
-        logger.debug(f"Output Path: {self.output_path}")
-        logger.debug(f"Cookies File: {self.cookies_file}")
-        
-        # Set up a logger for logging messages, errors, and debug information
-        self.logger = logging.getLogger(__name__)
+        self.logger.debug("Initializing YTDownloadManager with the following options:")
+        self.logger.debug(f"Output Path: {self.output_path}")
+        self.logger.debug(f"Cookies File: {self.cookies_file}")
 
         # Flag to indicate if the download process has been requested to stop
-        self.is_stopped = False
+        self._is_stopped = False
 
         # List to keep track of URLs that failed to download along with reasons
         self.failed_urls = []
@@ -111,10 +88,11 @@ class DownloadThread(QThread):
         """
         Stop the download process.
 
-        Sets the `is_stopped` flag to True, which signals the thread to halt
+        Sets the `_is_stopped` flag to True, which signals the thread to halt
         ongoing and future download operations gracefully.
         """
-        self.is_stopped = True
+        self._is_stopped = True
+        self.logger.info("Stop signal received. Attempting to terminate downloads gracefully.")
 
     def run(self):
         """
@@ -126,22 +104,14 @@ class DownloadThread(QThread):
             3. Emitting signals to update the GUI about progress and status.
             4. Handling any failed downloads and notifying the GUI.
         """
-        
         # Check if the cookies file exists if provided
-        if self.cookies_file:
-            if not Path(self.cookies_file).exists():
-                self.status_update.emit(f"Cookies file '{self.cookies_file}' not found. Some downloads may fail.")
-                self.logger.warning(f"Cookies file '{self.cookies_file}' does not exist.")
-                # Optionally, you can choose to stop the download process here
-                # self.failed_urls.append({"url": "N/A", "reason": "Missing cookies file."})
-                # self.failed_downloads_signal.emit(self.failed_urls)
-                # self.finished.emit()
-                # return
-            else:
-                self.logger.debug(f"Cookies file found: {self.cookies_file}")
+        if self.cookies_file and not self.cookies_file.exists():
+            self.status_update.emit(f"Cookies file '{self.cookies_file}' not found. Some downloads may fail.")
+            self.logger.warning(f"Cookies file '{self.cookies_file}' does not exist.")
+        elif self.cookies_file:
+            self.logger.debug(f"Cookies file found: {self.cookies_file}")
         
         download_manager = YTDownloadManager(
-            logger=self.logger,
             settings=self.settings,
             cookies_file=self.cookies_file
         )
@@ -151,44 +121,35 @@ class DownloadThread(QThread):
 
         # Step 1: Extract all video URLs from the input URLs (handling playlists)
         for index, url in enumerate(self.urls, start=1):
-            # Check if a stop has been requested before processing each URL
-            if self.is_stopped:
+            if self._is_stopped:
                 self.status_update.emit("Download stopped by user.")
-                break  # Exit the loop if a stop is requested
+                break
 
-            # Emit a status update to inform the user about the current extraction process
             self.status_update.emit(
                 f"Extracting videos from URL {index}/{len(self.urls)}: {url}"
             )
 
             try:
-                # yt_dlp options for extracting video URLs without downloading them
                 ydl_opts_flat = {
-                    'quiet': False,              # Suppress yt_dlp's own output
-                    'verbose': True,
-                    'skip_download': True,      # Do not download videos
-                    'extract_flat': True,       # Extract URLs without full metadata
-                    'ignoreerrors': True,       # Ignore errors and continue
-                    'logger': self.logger,      # Use the custom logger
+                    'quiet': True,
+                    'skip_download': True,
+                    'ignoreerrors': True,
                 }
-                
-                if self.cookies_file:
-                    ydl_opts_flat['cookiefile'] = self.cookies_file
-                    self.logger.debug(f"Using cookies file for flat extraction: {self.cookies_file}")
-                
-                self.logger.debug(f"yt_dlp options for flat extraction: {ydl_opts_flat}")
 
-                # Use yt_dlp to extract information about the provided URL
+                if self.cookies_file:
+                    ydl_opts_flat['cookiefile'] = str(self.cookies_file)
+                    self.logger.debug(f"Using cookies file for extraction: {self.cookies_file}")
+
+                self.logger.debug(f"yt_dlp options for extraction: {ydl_opts_flat}")
+
                 with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl_flat:
                     info_dict = ydl_flat.extract_info(url, download=False)
 
-                    # If no metadata is found, log an error and record the failure
                     if info_dict is None:
                         self.logger.error(f"No metadata found for URL: {url}")
                         self.failed_urls.append({"url": url, "reason": "No metadata found."})
-                        continue  # Move to the next URL
+                        continue
 
-                    # Determine if the URL is a single video or a playlist
                     info_type = info_dict.get('_type', 'video')
 
                     if info_type == 'playlist':
@@ -196,42 +157,30 @@ class DownloadThread(QThread):
                         entries = info_dict.get('entries', [])
                         for entry in entries:
                             if entry is None:
-                                # Entry is None, likely due to a private or inaccessible video
-                                video_url = entry.get('url') if entry and 'url' in entry else 'Unknown URL'
-                                if video_url != 'Unknown URL':
-                                    self.failed_urls.append({"url": video_url, "reason": "Private"})
-                                    self.logger.warning(f"Private video detected. URL: {video_url}")
-                                else:
-                                    self.failed_urls.append({"url": url, "reason": "Private"})
-                                    self.logger.warning(f"Private video detected. URL: {url}")
+                                video_url = 'Unknown URL'
+                                self.failed_urls.append({"url": video_url, "reason": "Private or inaccessible video."})
+                                self.logger.warning(f"Private or inaccessible video detected. URL: {video_url}")
                             else:
-                                # Extract the actual video URL from the entry
-                                video_url = entry.get('url', 'Unknown URL')
-                                # Convert relative URLs to full URLs if necessary
-                                if not video_url.startswith('http'):
-                                    video_url = f"https://www.youtube.com/watch?v={video_url}"
-                                # Add the fully qualified video URL to the list
+                                video_url = entry.get('webpage_url', entry.get('url', 'Unknown URL'))
                                 all_video_urls.append(video_url)
                     elif info_type == 'video':
                         video_url = info_dict.get('webpage_url', 'Unknown URL')
                         all_video_urls.append(video_url)
                     else:
-                        # Handle any unexpected types gracefully
                         self.logger.warning(f"Unhandled type: {info_type} for URL: {url}")
                         self.failed_urls.append({"url": url, "reason": f"Unhandled type: {info_type}"})
             except Exception as e:
-                # Log any exceptions that occur during the extraction process
                 self.logger.error(f"Error extracting URL '{url}': {e}")
-                self.logger.error(traceback.format_exc())  # Log the stack trace for debugging
+                self.logger.error(traceback.format_exc())
                 self.failed_urls.append({"url": url, "reason": str(e)})
 
-        # After extracting, set the total number of videos to download
         self.total_items = len(all_video_urls)
+        self.logger.info(f"Total videos to download: {self.total_items}")
 
         # Step 2: Process each video URL individually
         for i, video_url in enumerate(all_video_urls, start=1):
             # Check if a stop has been requested before downloading each video
-            if self.is_stopped:
+            if self._is_stopped:
                 self.status_update.emit("Download stopped by user.")
                 break  # Exit the loop if a stop is requested
 
@@ -241,16 +190,14 @@ class DownloadThread(QThread):
             try:
                 # yt_dlp options for extracting full metadata of the video
                 ydl_opts_full = {
-                    'quiet': False,          # Suppress yt_dlp's own output
-                    'verbose': True,
+                    'quiet': True,          # Suppress yt_dlp's own output
                     'skip_download': True,  # Do not download yet; metadata only
                     'ignoreerrors': True,   # Ignore errors and continue
-                    'logger': self.logger,  # Use the custom logger
                 }
 
                 # Include 'cookiefile' if cookies are provided
                 if self.cookies_file:
-                    ydl_opts_full['cookiefile'] = self.cookies_file
+                    ydl_opts_full['cookiefile'] = str(self.cookies_file)
                     self.logger.debug(f"Using cookies file for metadata extraction: {self.cookies_file}")
                 else:
                     self.logger.debug("No cookies file provided for metadata extraction.")
@@ -263,7 +210,7 @@ class DownloadThread(QThread):
                     # If video_info is None, the video might be private or inaccessible
                     if video_info is None:
                         self.logger.error(f"Private video or inaccessible: {video_url}")
-                        self.failed_urls.append({"url": video_url, "reason": "Private"})
+                        self.failed_urls.append({"url": video_url, "reason": "Private or inaccessible video."})
                         self.completed_items += 1
                         self.update_total_progress()
                         continue  # Move to the next video
@@ -292,14 +239,14 @@ class DownloadThread(QThread):
             self.failed_downloads_signal.emit(self.failed_urls)
 
         # If the download was stopped by the user, emit a corresponding status update
-        if self.is_stopped:
+        if self._is_stopped:
             self.status_update.emit("Download stopped by user.")
 
         # Emit a final status update indicating that the download process is complete
         self.status_update.emit("Download complete")
         self.finished.emit()  # Signal that the thread has finished its execution
 
-    def update_total_progress(self):
+    def update_total_progress(self) -> None:
         """
         Update the overall progress bar based on completed items.
 
@@ -314,7 +261,13 @@ class DownloadThread(QThread):
             # If there are no items to download, set progress to 0%
             self.total_progress_update.emit(0)
 
-    def process_single_video(self, info_dict: dict, download_manager: YTDownloadManager, base_folder: str, video_url: str):
+    def process_single_video(
+        self,
+        info_dict: Dict[str, Any],
+        download_manager: YTDownloadManager,
+        base_folder: Path,
+        video_url: str
+    ) -> None:
         """
         Process an individual video by downloading it and handling its metadata.
 
@@ -325,12 +278,13 @@ class DownloadThread(QThread):
             - Initiates the download using the download manager.
 
         Args:
-            info_dict (dict): A dictionary containing metadata of the video.
+            info_dict (Dict[str, Any]): A dictionary containing metadata of the video.
             download_manager (YTDownloadManager): An instance of the download manager to handle the download.
-            base_folder (str): The base directory where downloads are saved.
+            base_folder (Path): The base directory where downloads are saved.
+            video_url (str): The URL of the video being downloaded.
         """
         # Check if a stop has been requested before processing the video
-        if self.is_stopped:
+        if self._is_stopped:
             raise yt_dlp.utils.DownloadCancelled()
 
         if info_dict is None:
@@ -364,6 +318,8 @@ class DownloadThread(QThread):
             except Exception as e:
                 # Log any errors that occur while downloading the thumbnail
                 self.logger.error(f"Failed to download thumbnail: {e}")
+        else:
+            self.logger.warning("Thumbnail URL not available.")
 
         # Determine the final folder path where the video will be saved
         final_folder = base_folder
@@ -374,15 +330,15 @@ class DownloadThread(QThread):
             if upload_date and len(upload_date) >= 4:
                 year = upload_date[:4]  # Extract the year from the upload date
                 # Append the year to the base folder path
-                final_folder = os.path.join(final_folder, year)
+                final_folder = base_folder / year
 
         # Create the final folder if it doesn't exist
-        os.makedirs(final_folder, exist_ok=True)
+        final_folder.mkdir(parents=True, exist_ok=True)
 
         # Clean the video title to create a valid filename
-        video_title = clean_filename(info_dict.get('title', 'Unknown_Title'))
+        video_title = clean_filename(info_dict.get('title', 'Unknown_Title'), final_folder)
         # Define the output template with the desired file extension
-        output_template = os.path.join(final_folder, f"{video_title}.%(ext)s")
+        output_template = f"{final_folder / video_title}.%(ext)s"
 
         # Log video details
         self.logger.debug(f"Processing video: {title}")
@@ -397,8 +353,9 @@ class DownloadThread(QThread):
                 output_template=output_template,              # Output file template
                 info_dict=info_dict,                          # Video metadata
                 progress_callback=self.progress_update.emit,   # Callback for progress updates
-                is_stopped=self.is_stopped                     # Pass the stop flag
+                is_stopped=lambda: self._is_stopped             # Pass the stop flag
             )
+            self.logger.info(f"Successfully downloaded: {video_title}")
         except yt_dlp.utils.DownloadCancelled:
             # If the download was cancelled, log the event and emit a status update
             self.logger.info(f"Download cancelled for video: {title}")
@@ -413,7 +370,67 @@ class DownloadThread(QThread):
                 reason = error_message
             # Log the failure reason
             self.logger.error(f"Failed to download video '{title}': {reason}")
-            # Extract the video's webpage URL for reference
-            #video_url = info_dict.get('webpage_url', 'Unknown URL')
             # Record the failed download with its reason
             self.failed_urls.append({"url": video_url, "reason": reason})
+
+    def prepare_metadata(self, info_dict: Dict[str, Any], original_url: str) -> str:
+        """
+        Prepare and format metadata text from video information.
+
+        Args:
+            info_dict (Dict[str, Any]): Dictionary containing video information.
+            original_url (str): Original URL of the video.
+
+        Returns:
+            str: Formatted metadata text.
+        """
+        metadata_sections = []
+
+        basic_info = {
+            'Title': info_dict.get('title', ''),
+            'Uploader': info_dict.get('uploader', ''),
+            'Upload date': info_dict.get('upload_date', ''),
+            'Duration': info_dict.get('duration', ''),
+            'View count': info_dict.get('view_count', ''),
+            'Like count': info_dict.get('like_count', ''),
+            'Description': info_dict.get('description', ''),
+            'Tags': ', '.join(info_dict.get('tags', [])),
+        }
+        metadata_sections.append("Basic Info:\n" + '\n'.join(f"{key}: {value}" for key, value in basic_info.items()))
+
+        technical_info = {
+            'Format': info_dict.get('format', ''),
+            'Format ID': info_dict.get('format_id', ''),
+            'Resolution': info_dict.get('resolution', ''),
+            'FPS': info_dict.get('fps', ''),
+            'Video Codec': info_dict.get('vcodec', ''),
+            'Audio Codec': info_dict.get('acodec', ''),
+        }
+        metadata_sections.append("Technical Info:\n" + '\n'.join(f"{key}: {value}" for key, value in technical_info.items()))
+
+        other_info = {
+            'Categories': ', '.join(info_dict.get('categories', [])),
+            'License': info_dict.get('license', ''),
+            'Age Limit': info_dict.get('age_limit', ''),
+            'Webpage URL': info_dict.get('webpage_url', ''),
+            'Original URL': original_url,
+        }
+        metadata_sections.append("Other Info:\n" + '\n'.join(f"{key}: {value}" for key, value in other_info.items()))
+
+        return '\n\n'.join(metadata_sections)
+
+    def set_file_times(self, filepaths: List[Path], timestamp: int) -> None:
+        """
+        Update file modification times to match the upload timestamp.
+        
+        Args:
+            filepaths (List[Path]): List of file paths to update.
+            timestamp (int): Unix timestamp to set as the modification time.
+        """
+        times = (timestamp, timestamp)
+        for filepath in filepaths:
+            if filepath.exists():  # Only set times if the file exists
+                filepath.touch(exist_ok=True)  # Ensure the file exists
+                os.utime(filepath, times)
+            else:
+                self.logger.debug(f"File not found for time update: {filepath}")

@@ -9,18 +9,40 @@ from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QLabel, QTextEdit, QProgressBar,
     QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QDialog
 )
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap
 
 # Import custom modules for download functionality, dialogs, utilities, and logging
 from download_thread import DownloadThread
 from dialogs import SupportedSitesDialog, SettingsDialog, FailedDownloadsDialog
 from utils import (
-    load_last_directory, save_last_directory,
-    load_settings, save_settings, get_supported_sites
+    load_last_directory, save_last_directory, check_ffmpeg_installed,
+    load_settings, save_settings, get_supported_sites, setup_logging, validate_cookies_file, 
 )
 from log_handler import QTextEditLogger  # Custom logger to display logs in QTextEdit
 
+class ThumbnailLoader(QThread):
+    thumbnail_loaded = pyqtSignal(QPixmap)
+
+    def __init__(self, thumbnail_path):
+        super().__init__()
+        self.thumbnail_path = thumbnail_path
+
+    def run(self):
+        pixmap = QPixmap(self.thumbnail_path)
+        self.thumbnail_loaded.emit(pixmap)
+
+class DescriptionLoader(QThread):
+    description_loaded = pyqtSignal(str)
+
+    def __init__(self, description_text):
+        super().__init__()
+        self.description_text = description_text
+
+    def run(self):
+        # Simulate processing if necessary
+        self.description_loaded.emit(self.description_text)
+        
 def check_ffmpeg_installed():
     """
     Check if FFmpeg is installed and accessible in the system PATH.
@@ -109,10 +131,10 @@ class YTDownloadApp(QtWidgets.QWidget):
         level_name = self.settings.get('logging_level', 'DEBUG').upper()
         # Get the corresponding logging level from the logging module
         level = getattr(logging, level_name, logging.DEBUG)
-        # Set the logging level for the root logger
-        logging.getLogger().setLevel(level)
+        # Reconfigure logging with the new level
+        setup_logging(log_level=level)
         # Log a debug message indicating the current logging level
-        self.logger.debug(f"Logging level set to {level_name}")
+        logging.getLogger(__name__).debug(f"Logging level set to {level_name}")
 
     def initUI(self):
         """
@@ -242,6 +264,12 @@ class YTDownloadApp(QtWidgets.QWidget):
         self.video_description_browser = QTextEdit(self)
         self.video_description_browser.setReadOnly(True)
         self.side_layout.addWidget(self.video_description_browser)
+        
+        placeholder_pixmap = QPixmap(200, 200)
+        placeholder_pixmap.fill(Qt.gray)
+        self.thumbnail_label.setPixmap(placeholder_pixmap)
+        self.video_description_browser.setText("Loading description...")
+
 
     def select_output_folder(self):
         """
@@ -265,9 +293,20 @@ class YTDownloadApp(QtWidgets.QWidget):
         Open a dialog for the user to select a cookies.txt file.
         Save the selected file path to settings and update the label in the GUI.
         """
+        # Inform the user about the sensitivity of cookies files
+        QMessageBox.information(
+            self,
+            self.tr("Cookies File Security"),
+            self.tr(
+                "Please ensure that your cookies file is stored securely.\n"
+                "It may contain sensitive information.\n"
+                "Avoid sharing or exposing this file to unauthorized parties."
+            )
+        )
+
         # Define options for the file dialog
         options = QFileDialog.Options()
-        options |= QFileDialog.ReadOnly  # Make the dialog read-only
+        options |= QFileDialog.ReadOnly
         # Open a file selection dialog for text files
         file_name, _ = QFileDialog.getOpenFileName(
             self, 
@@ -277,14 +316,41 @@ class YTDownloadApp(QtWidgets.QWidget):
             options=options
         )
         if file_name:
-            # If a file is selected, update the cookies_file attribute
+            # Validate the cookies file format (basic validation)
+            if not validate_cookies_file(file_name):
+                QMessageBox.warning(
+                    self,
+                    self.tr("Invalid Cookies File"),
+                    self.tr("The selected file does not appear to be a valid cookies file.")
+                )
+                return
+
             self.cookies_file = Path(file_name)
-            # Update the label to display the selected cookies file
             self.cookies_label.setText(f"{self.tr('Cookies file')}: {file_name}")
-            # Save the selected cookies file path to settings
             self.settings['cookies_file'] = str(file_name)
             save_settings(self.settings)
-
+    
+    def validate_cookies_file(file_path: str) -> bool:
+        """
+        Validate the format of the selected cookies file.
+        
+        Args:
+            file_path (str): Path to the cookies file.
+        
+        Returns:
+            bool: True if valid, False otherwise.
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                first_line = f.readline()
+                # Basic check: Netscape format starts with # Netscape HTTP Cookie File
+                if first_line.strip() == '# Netscape HTTP Cookie File':
+                    return True
+            return False
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error validating cookies file: {e}")
+            return False
+        
     def on_start_download_clicked(self):
         """
         Handle the event when the Start Download button is clicked.
@@ -335,9 +401,8 @@ class YTDownloadApp(QtWidgets.QWidget):
         if hasattr(self, 'thread') and self.thread.isRunning():
             # Request the thread to stop
             self.thread.stop()
-            # Disable the Stop button as the stop request has been made
             self.stop_button.setEnabled(False)
-            # Update the status label to inform the user that the download is stopping
+            self.start_button.setEnabled(True)
             self.status_label.setText("Stopping download...")
 
     def update_progress(self, value: int):
@@ -378,22 +443,39 @@ class YTDownloadApp(QtWidgets.QWidget):
 
     def update_thumbnail(self, pixmap: QPixmap):
         """
-        Update the thumbnail image displayed in the GUI.
-        
-        Args:
-            pixmap (QPixmap): The pixmap image of the video's thumbnail.
+        Start a thread to load the thumbnail asynchronously.
         """
-        self.thumbnail_label.setPixmap(pixmap)
+        if pixmap:
+            loader = ThumbnailLoader(pixmap)
+            loader.thumbnail_loaded.connect(self.display_thumbnail)
+            loader.start()
+        else:
+            self.thumbnail_label.setPixmap(QPixmap())  # Clear or set a default image
 
+    def display_thumbnail(self, pixmap: QPixmap):
+        """
+        Display the loaded thumbnail in the GUI.
+        """
+        self.thumbnail_label.setPixmap(pixmap.scaled(
+            self.thumbnail_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        ))
+    
     def update_description(self, description: str):
         """
-        Update the text area that displays the description of the current video.
-        
-        Args:
-            description (str): The description text of the video.
+        Start a thread to load the description asynchronously.
         """
-        self.video_description_browser.setText(f"{description}")
+        loader = DescriptionLoader(description)
+        loader.description_loaded.connect(self.display_description)
+        loader.start()
 
+    def display_description(self, description: str):
+        """
+        Display the loaded description in the GUI.
+        """
+        self.video_description_browser.setText(description)
+    
     def on_download_finished(self):
         """
         Handle the event when the download thread has finished processing all URLs.
@@ -474,7 +556,31 @@ class YTDownloadApp(QtWidgets.QWidget):
                 self.url_input.setText('\n'.join(new_urls))
                 # Start the download process again with the new URLs
                 self.on_start_download_clicked()
+    
+    def closeEvent(self, event):
+        if hasattr(self, 'thread') and self.thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Exit Application",
+                "Downloads are in progress. Do you really want to exit?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
 
+            if reply == QMessageBox.Yes:
+                self.thread.stop()
+                self.thread.finished.connect(self._on_thread_finished)
+                self.status_label.setText("Waiting for downloads to stop...")
+                event.ignore()
+            else:
+                event.ignore()
+        else:
+            event.accept()
+
+    def _on_thread_finished(self):
+        # This method will be called when the thread finishes
+        self.close()
+        
 # ------------------------
 # Entry Point of the Application
 # ------------------------

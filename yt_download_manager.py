@@ -12,12 +12,15 @@ import mutagen
 from mutagen.mp4 import MP4, MP4Cover
 from PIL import Image  # Added for image conversion
 
+# Obtain logger from the root logger configured in utils.py
+logger = logging.getLogger(__name__)
+
 class YTDownloadManager:
     """
     Simplified download manager using yt-dlp's features.
     """
 
-    def __init__(self, logger, settings, cookies_file=None):
+    def __init__(self, settings, cookies_file=None):
         """
         Initialize the download manager with logger, settings, and optional cookies file.
         """
@@ -74,10 +77,15 @@ class YTDownloadManager:
         # Existing title, uploader, and description processing
         video_title = info_dict.get("title", "Unknown Title")
         uploader_name = info_dict.get("uploader", "Unknown Uploader")
+        description_content = ""
         
-        with open(description_filepath, "r", encoding="utf-8") as file:
-            description_content = file.read()
-
+        if description_filepath.exists():
+            try:
+                with open(description_filepath, "r", encoding="utf-8") as file:
+                    description_content = file.read()
+            except Exception as e:
+                self.logger.error(f"Failed to read description file: {e}")
+        
         # Define temporary output file
         output_filepath = video_filepath + "_temp_with_comments.mp4"
         command = [
@@ -86,16 +94,22 @@ class YTDownloadManager:
             "-y",
             "-metadata", f"title={video_title}",
             "-metadata", f"author={uploader_name}",
-            "-metadata", f"comment={description_content}",
-            "-metadata", f"description={description_content}",
+        ]
+        if description_content:
+            command += [
+                "-metadata", f"comment={description_content}",
+                "-metadata", f"description={description_content}",
+            ]
+
+        command += [
             "-c", "copy",
             output_filepath
         ]
         
         try:
             subprocess.run(command, check=True)
-            if os.path.exists(output_filepath):
-                os.replace(output_filepath, video_filepath)
+            if output_filepath.exists():
+                output_filepath.replace(video_filepath)
                 self.logger.debug(f"Description metadata added to: {video_filepath}")
                 
                 # Embed thumbnail using Mutagen after FFmpeg metadata
@@ -120,7 +134,7 @@ class YTDownloadManager:
         thumbnail_filepath = None
         for ext in possible_extensions:
             temp_thumbnail_filepath = video_filepath.replace('.mp4', ext)
-            if os.path.exists(temp_thumbnail_filepath):
+            if temp_thumbnail_filepath.exists():
                 # Convert the thumbnail to PNG if it's not already
                 if ext != '.png':
                     png_thumbnail_filepath = self.convert_thumbnail_to_png(temp_thumbnail_filepath)
@@ -131,7 +145,7 @@ class YTDownloadManager:
                     thumbnail_filepath = temp_thumbnail_filepath
                     break
         
-        if thumbnail_filepath and os.path.exists(thumbnail_filepath):
+        if thumbnail_filepath and thumbnail_filepath.exists():
             try:
                 video = MP4(video_filepath)
                 with open(thumbnail_filepath, "rb") as img_file:
@@ -154,6 +168,11 @@ class YTDownloadManager:
         :param is_stopped: Function to check if the download should be stopped.
         """
         output_file_path = output_template % {"ext": "mp4"}  # Adjust if necessary for other formats
+        download_subtitles = self.settings.get('download_subtitles', False)
+        download_quality = self.settings.get('download_quality', 'best')
+        # Use video ID or a default name if title is missing
+        video_title = info_dict.get('title') or f"video_{info_dict.get('id', 'unknown')}"
+        output_template = f"{output_template}/{video_title}.%(ext)s"
         
         # Check if this video was downloaded already, using metadata or file existence
         if video_url in self.downloaded_files or Path(output_file_path).exists():
@@ -165,31 +184,42 @@ class YTDownloadManager:
             """Hook function to monitor download progress."""
             if is_stopped and is_stopped():
                 raise yt_dlp.utils.DownloadCancelled()
-            if d['status'] == 'downloading':
-                if d['info_dict'].get('requested_downloads'):
-                    if 'fragment_index' in d:
-                        return
-                if progress_callback:
-                    total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
-                    downloaded_bytes = d.get('downloaded_bytes', 0)
-                    if total_bytes:
-                        percent_value = downloaded_bytes / total_bytes * 100
-                        progress_callback(percent_value)
-            elif d['status'] == 'finished':
+            status = d.get('status')
+            if status == 'downloading':
+                total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
+                downloaded_bytes = d.get('downloaded_bytes', 0)
+                if total_bytes:
+                    percent_value = downloaded_bytes / total_bytes * 100
+                    progress_callback(int(percent_value))
+                else:
+                    progress_callback(0)  # Unknown total size
+            elif status == 'finished':
                 if progress_callback:
                     progress_callback(100)
+            elif status == 'error':
+                if progress_callback:
+                    progress_callback(0)  # Reset progress on error
+                self.logger.error(f"Download encountered an error: {d.get('error', 'Unknown error')}")
+            elif status == 'started':
+                self.logger.info("Download started.")
+                if progress_callback:
+                    progress_callback(0)
+            elif status == 'extracting':
+                self.logger.info("Extracting video information.")
+                if progress_callback:
+                    progress_callback(50)  # Arbitrary progress value
 
         def postprocessor_hook(d):
             """Hook function called after post-processing."""
             if d['status'] == 'finished':
                 info_dict = d['info_dict']
                 video_filepath = info_dict['filepath']
-                video_basename = os.path.splitext(video_filepath)[0]
+                video_basename = video_filepath.stem
                 metadata_filepath = video_basename + '.txt'
                 metadata_json_filepath = video_basename + '.info.json'
                 description_filepath = video_filepath.replace('.mp4', '.description')
                 
-                if os.path.exists(description_filepath):
+                if description_filepath.exists():
                     self.add_description_to_video(video_filepath, description_filepath, d['info_dict'])
                 
                 # Save metadata and URL
@@ -214,7 +244,7 @@ class YTDownloadManager:
                 else:
                     self.logger.warning("Upload timestamp not available; file modification times not updated.")
 
-        # Configure yt_dlp options
+        output_format = self.settings.get('output_format', 'mp4').lower()
         ydl_opts = {
             'outtmpl': output_template,
             'logger': self.logger,
@@ -228,28 +258,21 @@ class YTDownloadManager:
             'writethumbnail': True,
             'writedescription': True,
             'writeinfojson': True,
-            'embedmetadata': False,  # Disable yt-dlp's embed metadata since handled manually
-            'embedthumbnail': False,  # Disable yt-dlp's embed thumbnail
-            'postprocessors': [
-                {
-                    'key': 'FFmpegEmbedSubtitle',
-                    'already_have_subtitle': True,
-                },
-                {
-                    'key': 'FFmpegMetadata',
-                },
-                {
-                    'key': 'FFmpegThumbnailsConvertor',
-                    'format': 'png',
-                },
-            ],
+            'embedmetadata': False,
+            'embedthumbnail': False,
+            'continuedl': True,  # Enable resume
+            'retries': 3,  # Number of retry attempts
+            'fragment_retries': 3,  # Retries for fragment downloads
+            'concurrent_fragment_downloads': 5,  # Number of concurrent fragment downloads
         }
-
-        # Adjust options based on output format
+        
+        # Define postprocessors based on output format
+        postprocessors = []
         output_format = self.settings.get('output_format', 'mp4').lower()
+
         if output_format == 'mp3':
             ydl_opts.update({
-                'format': 'bestaudio/best',
+                'format': download_quality + '/bestaudio/best',
                 'postprocessors': [
                     {
                         'key': 'FFmpegExtractAudio',
@@ -261,44 +284,35 @@ class YTDownloadManager:
                     },
                 ],
             })
-        elif output_format == 'mkv':
+        elif output_format in ['mp4', 'mkv']:
             ydl_opts.update({
-                'format': 'bestvideo+bestaudio/best',
-                'merge_output_format': 'mkv',
-                'postprocessors': [
-                    {
-                        'key': 'FFmpegEmbedSubtitle',
-                        'already_have_subtitle': True,
-                    },
-                    {
-                        'key': 'FFmpegMetadata',
-                    },
-                    {
-                        'key': 'FFmpegThumbnailsConvertor',
-                        'format': 'png',
-                    },
-                ],
+                'format': download_quality + '+bestaudio/best',
+                'merge_output_format': output_format,
+                'postprocessors': postprocessors,
             })
         else:
-            # Default to mp4 settings if not mp3 or mkv
             ydl_opts.update({
-                'format': 'bestvideo+bestaudio/best',
+                'format': download_quality + '+bestaudio/best',
                 'merge_output_format': 'mp4',
-                'postprocessors': [
-                    {
-                        'key': 'FFmpegEmbedSubtitle',
-                        'already_have_subtitle': True,
-                    },
-                    {
-                        'key': 'FFmpegMetadata',
-                    },
-                    {
-                        'key': 'FFmpegThumbnailsConvertor',
-                        'format': 'png',
-                    },
-                ],
+                'postprocessors': postprocessors,
             })
 
+        # Handle subtitles
+        if download_subtitles:
+            ydl_opts['writesubtitles'] = True
+            ydl_opts['writeautomaticsub'] = True
+        else:
+            ydl_opts['writesubtitles'] = False
+            ydl_opts['writeautomaticsub'] = False
+        
+        # Handle metadata embedding based on settings
+        embed_metadata = {}
+        for tag in ['title', 'uploader', 'description', 'tags', 'license']:
+            embed = self.settings.get(f'embed_{tag}', True)
+            if embed:
+                embed_metadata[tag] = info_dict.get(tag, '')
+        # Now, use embed_metadata as needed in post-processing
+        
         # Include cookies if provided
         if self.cookies_file:
             ydl_opts['cookiefile'] = self.cookies_file
@@ -375,7 +389,35 @@ class YTDownloadManager:
         """
         times = (timestamp, timestamp)
         for filepath in filepaths:
-            if os.path.exists(filepath):  # Only set times if the file exists
+            if filepath.exists():  # Only set times if the file exists
+                filepath.touch(exist_ok=True)  # Ensure the file exists
+                filepath.stat()  # Refresh the file status
                 os.utime(filepath, times)
             else:
                 self.logger.debug(f"File not found for time update: {filepath}")
+                
+    def closeEvent(self, event):
+        """
+        Handle the event when the application window is closed.
+        Ensures that all running threads are properly terminated.
+        """
+        if hasattr(self, 'thread') and self.thread.isRunning():
+            # Prompt the user to confirm exit if downloads are in progress
+            reply = QMessageBox.question(
+                self,
+                self.tr("Exit Application"),
+                self.tr("Downloads are in progress. Do you really want to exit?"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                # Attempt to stop the thread
+                self.thread.stop()
+                # Wait for the thread to finish
+                self.thread.wait()
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
