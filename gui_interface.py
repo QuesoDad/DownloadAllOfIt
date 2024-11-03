@@ -1,13 +1,14 @@
 # gui_interface.py
 
-import os
 import logging
 import subprocess
 from pathlib import Path
+from PyQt5.QtCore import Qt
+
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
-    QFileDialog, QMessageBox, QLabel, QTextEdit, QProgressBar,
-    QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QDialog
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QDialog,
+    QTextEdit, QFileDialog, QMessageBox, QProgressBar, QHBoxLayout, QLineEdit
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap
@@ -17,7 +18,7 @@ from download_thread import DownloadThread
 from dialogs import SupportedSitesDialog, SettingsDialog, FailedDownloadsDialog
 from utils import (
     load_last_directory, save_last_directory, check_ffmpeg_installed,
-    load_settings, save_settings, get_supported_sites, setup_logging, validate_cookies_file, 
+    load_settings, save_settings, get_supported_sites, setup_logging, validate_cookies_file, check_ffmpeg_installed, 
 )
 from log_handler import QTextEditLogger  # Custom logger to display logs in QTextEdit
 
@@ -43,20 +44,7 @@ class DescriptionLoader(QThread):
         # Simulate processing if necessary
         self.description_loaded.emit(self.description_text)
         
-def check_ffmpeg_installed():
-    """
-    Check if FFmpeg is installed and accessible in the system PATH.
-    
-    Returns:
-        bool: True if FFmpeg is installed, False otherwise.
-    """
-    try:
-        # Attempt to run 'ffmpeg -version' to check if FFmpeg is available
-        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # If the command fails or FFmpeg is not found, return False
-        return False
+
 
 class YTDownloadApp(QtWidgets.QWidget):
     """
@@ -329,27 +317,6 @@ class YTDownloadApp(QtWidgets.QWidget):
             self.cookies_label.setText(f"{self.tr('Cookies file')}: {file_name}")
             self.settings['cookies_file'] = str(file_name)
             save_settings(self.settings)
-    
-    def validate_cookies_file(file_path: str) -> bool:
-        """
-        Validate the format of the selected cookies file.
-        
-        Args:
-            file_path (str): Path to the cookies file.
-        
-        Returns:
-            bool: True if valid, False otherwise.
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                first_line = f.readline()
-                # Basic check: Netscape format starts with # Netscape HTTP Cookie File
-                if first_line.strip() == '# Netscape HTTP Cookie File':
-                    return True
-            return False
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Error validating cookies file: {e}")
-            return False
         
     def on_start_download_clicked(self):
         """
@@ -394,12 +361,9 @@ class YTDownloadApp(QtWidgets.QWidget):
 
     def on_stop_download_clicked(self):
         """
-        Handle the event when the Stop Download button is clicked.
-        Attempts to stop the ongoing download process gracefully.
+        Attempt to stop the ongoing download process gracefully when Stop is clicked.
         """
-        # Check if the download thread exists and is currently running
-        if hasattr(self, 'thread') and self.thread.isRunning():
-            # Request the thread to stop
+        if hasattr(self, 'thread') and isinstance(self.thread, QThread) and self.thread.isRunning():
             self.thread.stop()
             self.stop_button.setEnabled(False)
             self.start_button.setEnabled(True)
@@ -481,6 +445,16 @@ class YTDownloadApp(QtWidgets.QWidget):
         Handle the event when the download thread has finished processing all URLs.
         Re-enable buttons and reset progress indicators.
         """
+        
+        # Ensure the thread is properly stopped and cleaned up
+        if hasattr(self, 'thread') and self.thread is not None:
+            if self.thread.isRunning():
+                self.thread.quit()  # Signal the thread to quit
+                self.thread.wait()  # Wait until the thread has completely finished
+            # Optionally, disconnect any signals to avoid accidental connections
+            self.thread.finished.disconnect(self.on_download_finished)
+            self.thread = None  # Clear the reference to the thread
+            
         # Re-enable the Start button to allow new downloads
         self.start_button.setEnabled(True)
         # Disable the Stop button as downloads are complete
@@ -490,6 +464,7 @@ class YTDownloadApp(QtWidgets.QWidget):
         self.total_progress_bar.setValue(0)
         # Update the status label to indicate completion
         self.status_label.setText("Download complete")
+        
         # Show an information message box to inform the user that downloads are complete
         QMessageBox.information(
             self, 
@@ -558,7 +533,10 @@ class YTDownloadApp(QtWidgets.QWidget):
                 self.on_start_download_clicked()
     
     def closeEvent(self, event):
-        if hasattr(self, 'thread') and self.thread.isRunning():
+        """
+        Handle the window close event, prompting the user if downloads are in progress.
+        """
+        if hasattr(self, 'thread') and isinstance(self.thread, QThread) and self.thread.isRunning():
             reply = QMessageBox.question(
                 self,
                 "Exit Application",
@@ -568,38 +546,17 @@ class YTDownloadApp(QtWidgets.QWidget):
             )
 
             if reply == QMessageBox.Yes:
+                # Stop the thread gracefully
                 self.thread.stop()
                 self.thread.finished.connect(self._on_thread_finished)
                 self.status_label.setText("Waiting for downloads to stop...")
-                event.ignore()
+                event.ignore()  # Keep the window open until the thread finishes
             else:
                 event.ignore()
         else:
-            event.accept()
+            event.accept()  # No active thread; close directly
+
 
     def _on_thread_finished(self):
         # This method will be called when the thread finishes
         self.close()
-        
-# ------------------------
-# Entry Point of the Application
-# ------------------------
-
-# If this script is run directly (not imported as a module), execute the following
-if __name__ == '__main__':
-    import sys  # Import sys to handle command-line arguments and exit
-
-    # Create the QApplication instance, which manages application-wide resources
-    app = QtWidgets.QApplication(sys.argv)
-
-    # ------------------------
-    # Test Section
-    # ------------------------
-    # Define a test URL (commonly known as a "Rickroll" link)
-    test_url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
-    # Create an instance of the YTDownloadApp in test mode with the test URL
-    window = YTDownloadApp(test_mode=True, test_urls=[test_url])
-    # Show the main application window
-    window.show()
-    # Start the application's event loop and exit when done
-    sys.exit(app.exec_())

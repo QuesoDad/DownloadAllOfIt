@@ -83,6 +83,15 @@ class DownloadThread(QThread):
         self.download_counter = 0  # Counts how many videos have been downloaded
         self.total_items = 0        # Total number of videos to download
         self.completed_items = 0    # Number of videos successfully downloaded
+        
+        # Ensure urls is a list
+        if isinstance(urls, str):
+            self.urls = [urls]
+        elif isinstance(urls, list):
+            self.urls = urls
+        else:
+            self.urls = []
+            logger.error(f"Invalid type for urls: {type(urls)}")
 
     def stop(self):
         """
@@ -115,16 +124,27 @@ class DownloadThread(QThread):
             settings=self.settings,
             cookies_file=self.cookies_file
         )
-
+        logger.debug(f"Starting download thread with URLs: {self.urls}")
         # List to hold all individual video URLs extracted from input URLs
         all_video_urls = []
 
+        # Debugging the type and value of `self.urls` and its length
+        print("Type of self.urls:", type(self.urls))
+        print("Value of self.urls:", self.urls)
+        print("Type of len(self.urls):", type(len(self.urls)))
+        print("Value of len(self.urls):", len(self.urls))
+        
         # Step 1: Extract all video URLs from the input URLs (handling playlists)
-        for index, url in enumerate(self.urls, start=1):
+        for index in range(1, len(self.urls) + 1):
+            url = self.urls[index - 1]  # Access the URL by index
             if self._is_stopped:
                 self.status_update.emit("Download stopped by user.")
                 break
-
+            
+            if not url:
+                self.logger.warning(f"Empty URL at index {index}")
+                continue
+            
             self.status_update.emit(
                 f"Extracting videos from URL {index}/{len(self.urls)}: {url}"
             )
@@ -134,6 +154,7 @@ class DownloadThread(QThread):
                     'quiet': True,
                     'skip_download': True,
                     'ignoreerrors': True,
+                    'no_color': True,       # Do not stick color text in output that will cause problems
                 }
 
                 if self.cookies_file:
@@ -170,15 +191,17 @@ class DownloadThread(QThread):
                         self.logger.warning(f"Unhandled type: {info_type} for URL: {url}")
                         self.failed_urls.append({"url": url, "reason": f"Unhandled type: {info_type}"})
             except Exception as e:
-                self.logger.error(f"Error extracting URL '{url}': {e}")
+                error_message = str(e)
+                self.logger.error(f"Error extracting URL '{url}': {error_message}")
                 self.logger.error(traceback.format_exc())
-                self.failed_urls.append({"url": url, "reason": str(e)})
+                self.failed_urls.append({"url": url, "reason": error_message})
 
         self.total_items = len(all_video_urls)
         self.logger.info(f"Total videos to download: {self.total_items}")
 
         # Step 2: Process each video URL individually
-        for i, video_url in enumerate(all_video_urls, start=1):
+        for i in range(1, len(all_video_urls) + 1):
+            video_url = all_video_urls[i - 1]  # Access the video URL by index
             # Check if a stop has been requested before downloading each video
             if self._is_stopped:
                 self.status_update.emit("Download stopped by user.")
@@ -192,7 +215,8 @@ class DownloadThread(QThread):
                 ydl_opts_full = {
                     'quiet': True,          # Suppress yt_dlp's own output
                     'skip_download': True,  # Do not download yet; metadata only
-                    'ignoreerrors': True,   # Ignore errors and continue
+                    'ignoreerrors': True,   # Ignore errors and continue+
+                    'no_color': True,       # Do not stick color text in output that will cause problems
                 }
 
                 # Include 'cookiefile' if cookies are provided

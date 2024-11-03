@@ -17,6 +17,9 @@ from typing import Any, Dict, List, Optional
 import logging
 import logging.handlers
 import shutil
+import time
+import os
+import subprocess
 
 # Initialize the logger for this module
 logger = logging.getLogger(__name__)
@@ -183,7 +186,7 @@ def save_settings(settings: Dict[str, Any], file_path: Path = DEFAULT_SETTINGS_F
         logging.getLogger(__name__).error(f"Error saving settings to {file_path}: {e}")
 
 
-def clean_filename(filename: str) -> str:
+def clean_filename(filename: str, output_dir: Optional[Path] = None) -> str:
     """
     Sanitize the filename by removing or replacing invalid characters.
     

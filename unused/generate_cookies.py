@@ -7,6 +7,8 @@ import sys
 # Add the parent directory (main project directory) to the Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+#This script fails. Most browsers don't allow access to these files in this fashion, or at least I couldn't make it work. Please use Get Cookies.txt LOCALLY extension or similar. 1. Log into the website you want to get cookies from. 2. Save the cookies. 3. Use the cookies.txt or whatever file name it gives you in the program to download. A smart move would be to add the domain on the front of your cookie file so you can keep track of different sites.
+
 def save_cookies_txt(domains):
     """
     Extract cookies for specified domains from the default browser and save to cookies.txt.

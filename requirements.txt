@@ -5,3 +5,5 @@ mutagen==1.47.0           # Metadata for media files
 ffmpeg-python==0.2.0      # Python wrapper for FFmpeg
 pillow==10.4.0            # Image processing library (PIL)
 pandas==2.2.2             # Data handling, if required
+pytest
+pytest-qt
