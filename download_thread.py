@@ -116,8 +116,7 @@ class DownloadThread(QThread):
         # Check if the cookies file exists if provided
         if self.cookies_file and not self.cookies_file.exists():
             self.status_update.emit(f"Cookies file '{self.cookies_file}' not found. Some downloads may fail.")
-            self.logger.warning(f"Cookies file '{self.cookies_file}' does not exist.")
-        elif self.cookies_file:
+        elif self.cookies_file and self.cookies_file.exists():
             self.logger.debug(f"Cookies file found: {self.cookies_file}")
         
         download_manager = YTDownloadManager(
