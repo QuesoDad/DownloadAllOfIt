@@ -70,8 +70,8 @@ class DownloadThread(QThread):
         
         # Initialize the download manager and log the command options
         self.logger.debug("Initializing YTDownloadManager with the following options:")
-        self.logger.debug(f"Output Path: {self.output_path}")
-        self.logger.debug(f"Cookies File: {self.cookies_file}")
+        self.logger.debug(f"Output Path: {str(self.output_path)}")
+        self.logger.debug(f"Cookies File: {str(self.cookies_file)}")
 
         # Flag to indicate if the download process has been requested to stop
         self._is_stopped = False
@@ -129,10 +129,10 @@ class DownloadThread(QThread):
         all_video_urls = []
 
         # Debugging the type and value of `self.urls` and its length
-        print("Type of self.urls:", type(self.urls))
-        print("Value of self.urls:", self.urls)
-        print("Type of len(self.urls):", type(len(self.urls)))
-        print("Value of len(self.urls):", len(self.urls))
+        self.logger.debug(f"Type of self.urls: {type(self.urls)}")
+        self.logger.debug(f"Value of self.urls: {self.urls}")
+        self.logger.debug(f"Type of len(self.urls): {type(len(self.urls))}")
+        self.logger.debug(f"Value of len(self.urls): {len(self.urls)}")
         
         # Step 1: Extract all video URLs from the input URLs (handling playlists)
         for index in range(1, len(self.urls) + 1):

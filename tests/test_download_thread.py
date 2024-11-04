@@ -18,9 +18,10 @@ sys.path.append(str(grandparent_dir))
 
 from download_thread import DownloadThread
 
-def test_download_thread_initialization():
+def test_download_thread_initialization(testdir):
     urls = ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]
-    output_path = Path("/tmp")
+    output_path = tmp_path / "test_output"
+    output_path.mkdir(exist_ok=True)    # Ensure the path exists
     settings = {}
     thread = DownloadThread(urls, output_path, settings)
     assert isinstance(thread, QThread)
@@ -29,9 +30,10 @@ def test_download_thread_initialization():
     assert thread.settings == settings
 
 @patch('download_thread.YTDownloadManager')
-def test_run_method(mock_manager_class):
+def test_run_method(mock_manager_class, tmp_path):
     urls = ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]
-    output_path = Path("/tmp")
+    output_path = tmp_path / "test_output"
+    output_path.mkdir(exist_ok=True)    # Ensure the path exists
     settings = {}
     thread = DownloadThread(urls, output_path, settings)
 
