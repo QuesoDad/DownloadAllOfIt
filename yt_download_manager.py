@@ -40,6 +40,8 @@ class YTDownloadManager:
                     return json.load(file)
             except json.JSONDecodeError as e:
                 self.logger.warning(f"Failed to load metadata file: {e}")
+        else:
+            self.logger.debug(f"download metadata file doesn't exist. Starting fresh.")
         return {}
 
     def save_downloaded_file(self, video_url, output_file_path):
@@ -174,7 +176,7 @@ class YTDownloadManager:
         video_title = info_dict.get('title') or f"video_{info_dict.get('id', 'unknown')}"
         output_template = f"{output_template}/{video_title}.%(ext)s"
         
-        # Check if this video was downloaded already, using metadata or file existence
+        # Check if this video was downloaded already, using url check in video_url dictionary or file existence
         if video_url in self.downloaded_files or Path(output_file_path).exists():
             self.logger.info(f"File for URL {video_url} already downloaded, skipping.")
             return  # Skip download
