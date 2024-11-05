@@ -65,6 +65,8 @@ class DownloadThread(QThread):
         self.output_path = Path(output_path)
         self.settings = settings
         self.cookies_file = cookies_file
+        self.failed_downloads = []
+        self.all_video_urls = []
         # Ensure cookies_file is a Path object
         self.cookies_file = Path(cookies_file) if cookies_file else None
         
@@ -83,8 +85,12 @@ class DownloadThread(QThread):
 
         # Counters to manage download statistics and throttling
         self.download_counter = 0  # Counts how many videos have been downloaded
-        self.total_items = 0        # Total number of videos to download
+        self.total_videos = 0        # Total number of videos to download
         self.completed_items = 0    # Number of videos successfully downloaded
+        
+        # List to hold all individual video URLs extracted from input URLs
+        self.all_video_urls = self.extract_video_urls()
+    
         
         # Ensure urls is a list
         if isinstance(urls, str):
@@ -95,60 +101,132 @@ class DownloadThread(QThread):
             self.urls = []
             logger.error(f"Invalid type for urls: {type(urls)}")
 
-    def stop(self):
-        """
-        Stop the download process.
-
-        Sets the `_is_stopped` flag to True, which signals the thread to halt
-        ongoing and future download operations gracefully.
-        """
-        self._is_stopped = True
-        self.logger.info("Stop signal received. Attempting to terminate downloads gracefully.")
-
     def extract_video_urls(self) -> List[str]:
-        """Extract individual video URLs from playlists or video URLs."""
-        all_video_urls = []
+        """Extract individual video URLs from playlists or single video URLs.
+        
+        Returns:
+            List[str]: A list containing individual video URLs extracted from
+                    the provided URLs (including those within playlists).
+        """
+        
+        
+        # Iterate through each URL provided in self.urls
         for url in self.urls:
+            
+            # Check if the download process was stopped by the user
             if self._is_stopped:
+                # Emit a status update message to inform that the process was stopped
                 self.status_update.emit("Download stopped by user.")
-                break
-            self.status_update.emit(
-                f"Extracting videos from URL {(self.urls)}"
-            )
+                break  # Exit the loop if stopped
+            
+            # Emit a status update message indicating which URL is currently being processed
+            self.status_update.emit(f"Attempting to extract video urls from URL {url}")
+            
+            ydl_opts_flat = {
+                        'quiet': True,
+                        'skip_download': True,
+                        'ignoreerrors': True,
+                        'no_color': True,       # Do not stick color text in output that will cause problems
+                    }
+            
+            if self.cookies_file:
+                ydl_opts_flat['cookiefile'] = str(self.cookies_file)
+                self.logger.debug(f"Using cookies file for extraction: {self.cookies_file}")
+            else:
+                self.logger.debug(f"No cookie file provided.")
+            
             try:
-                with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': 'in_playlist'}) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if 'entries' in info:  # Playlist case
-                        for entry in info['entries']:
-                            all_video_urls.append(entry['url'])
-                    else:  # Single video case
-                        all_video_urls.append(url)
+                # Configure yt_dlp to extract info_dict without downloading (use flat extraction for playlists)
+                with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
+                    # Attempt to extract information from the URL
+                    info_dict = ydl.extract_info(url, download=False)
+                    if info_dict is None:
+                        self.logger.error(f"Failed to extract info for {url}")
+                        self.failed_downloads.append((url, "Failed to extract video URLs"))
+                        continue  # Skip this URL and move to the next
+                    
+                    if info_dict is None:
+                        self.logger.error(f"No metadata found for URL: {url}")
+                        self.failed_urls.append({"url": url, "reason": "No metadata found."})
+                        continue
+                    
+                    info_type = info_dict.get('_type', 'video') #get what the info type is
+                    
+                    if '_type' not in info_dict:
+                        self.logger.error(f"No metadata found for URL: {url}")
+                        self.failed_downloads.append((url, "No metadata found."))
+                        continue
+
+                    if info_dict['_type'] == 'playlist' and 'entries' in info_dict:
+                        for entry in info_dict['entries']:
+                            self.all_video_urls.append(entry['url'])
+                    else:
+                        self.all_video_urls.append(url)
+            
             except Exception as e:
+                # Log an error if extraction fails and add the URL to failed downloads, also print what the info type is
                 self.logger.error(f"Failed to extract URLs from {url}: {e}")
                 self.failed_downloads.append((url, "Failed to extract video URLs"))
-        return all_video_urls
+                self.logger.warning(f"Unhandled type: {info_type} for URL: {url}")
 
-    def process_video_url(self, video_url: str):
-        """Download and process an individual video URL."""
-        if self._is_stopped:
-            self.status_update.emit("Download stopped by user.")
-            break
+        # Return the list of extracted video URLs
+        return self.all_video_urls
+
+    def process_video_url(self, video_url: str, index: int, total_videos: int):
+        """Download and process an individual video URL with error handling and progress updates."""
+
+        # Emit a status update for the user
+        self.status_update.emit(f"Downloading video {index}/{total_videos}: {video_url}")
+
         try:
-            output_file_path = self.output_path / f"{clean_filename(video_url)}.mp4"
-            
-            if video_url in self.download_manager.downloaded_files or output_file_path.exists():
-                self.logger.info(f"File for URL {video_url} already downloaded, skipping.")
-                return
-            
-            self.download_manager.download_video(video_url, output_file_path)
+            # yt_dlp options for extracting full metadata of the video
+            ydl_opts_full = {
+                'quiet': True,          # Suppress yt_dlp's own output
+                'skip_download': True,  # Only fetch metadata, no download yet
+                'ignoreerrors': True,   # Continue despite errors
+                'no_color': True,       # No colored text to avoid issues in output
+            }
 
-            # Emit progress and status updates
-            self.status_update.emit(f"Downloaded: {video_url}")
-            self.total_progress_update.emit(100 * (self.urls.index(video_url) + 1) // len(self.urls))
+            # Include cookies file if provided
+            if self.cookies_file:
+                ydl_opts_full['cookiefile'] = str(self.cookies_file)
+                self.logger.debug(f"Using cookies file for metadata extraction: {self.cookies_file}")
+            else:
+                self.logger.debug("No cookies file provided for metadata extraction.")
 
+            self.logger.debug(f"Metadata extraction options for video {video_url}: {ydl_opts_full}")
+
+            # Extract video metadata
+            with yt_dlp.YoutubeDL(ydl_opts_full) as ydl_full:
+                video_info = ydl_full.extract_info(video_url, download=False)
+
+                # Handle inaccessible or private video
+                if video_info is None:
+                    self.logger.error(f"Private video or inaccessible: {video_url}")
+                    self.failed_urls.append({"url": video_url, "reason": "Private or inaccessible video."})
+                    self.completed_items += 1
+                    self.update_total_progress()
+                    return  # Exit function for this video
+
+            # Process and download the video using the download manager
+            self.process_single_url(video_info, self.download_manager, self.output_path, video_url)
+
+            # Increment completed items and update progress
+            self.completed_items += 1
+            self.update_total_progress()
         except Exception as e:
-            self.logger.error(f"Failed to download video: {video_url} - {e}")
-            self.failed_downloads.append((video_url, str(e)))
+            # Log any exceptions during download
+            self.logger.error(f"Failed to download video '{video_url}': {e}")
+            self.failed_urls.append({"url": video_url, "reason": str(e)})
+            self.completed_items += 1
+            self.update_total_progress()
+
+        # Implement a cool-off delay after every 10 video downloads
+        self.download_counter += 1
+        if self.download_counter % 10 == 0:
+            delay = random.uniform(0, 2)
+            self.logger.info(f"Cooling off for {delay:.2f} seconds to prevent rate limiting.")
+            time.sleep(delay)
     
     def run(self):
         """
@@ -181,132 +259,18 @@ class DownloadThread(QThread):
         logger.debug(f"Starting download thread with URLs: {self.urls}")
         
         # List to hold all individual video URLs extracted from input URLs
-        all_video_urls = self.extract_video_urls()
-
-        # Step 2: Process each video URL individually
-        for video_url in all_video_urls:
-            self.process_video_url(video_url)
+        #all_video_urls = self.extract_video_urls()
         
+        self.total_videos = len(self.all_video_urls)
+        self.logger.info(f"Total videos to download: {self.total_videos}")
         
-        # Step 1: Extract all video URLs from the input URLs (handling playlists)
-        #for index in range(1, len(self.urls) + 1):
-        #    url = self.urls[index - 1]  # Access the URL by index
-        #    if self._is_stopped:
-        #        self.status_update.emit("Download stopped by user.")
-        #        break
-        #    
-        #    self.status_update.emit(
-        #        f"Extracting videos from URL {index}/{len(self.urls)}: {url}"
-        #    )
-
-            #try:
-                #ydl_opts_flat = {
-                    #'quiet': True,
-                    #'skip_download': True,
-                    #'ignoreerrors': True,
-                    #'no_color': True,       # Do not stick color text in output that will cause problems
-                #}
-
-                #if self.cookies_file:
-                    #ydl_opts_flat['cookiefile'] = str(self.cookies_file)
-                    #self.logger.debug(f"Using cookies file for extraction: {self.cookies_file}")
-
-                #self.logger.debug(f"yt_dlp options for extraction: {ydl_opts_flat}")
-
-                #with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl_flat:
-                #    info_dict = ydl_flat.extract_info(url, download=False)
-
-                    #if info_dict is None:
-                    #    self.logger.error(f"No metadata found for URL: {url}")
-                    #    self.failed_urls.append({"url": url, "reason": "No metadata found."})
-                    #    continue
-
-                    #info_type = info_dict.get('_type', 'video')
-
-                    #if info_type == 'playlist':
-                        # If it's a playlist, extract all video entries within it
-                    #    entries = info_dict.get('entries', [])
-                    #    for entry in entries:
-                    #        if entry is None:
-                    #            video_url = 'Unknown URL'
-                    #            self.failed_urls.append({"url": video_url, "reason": "Private or inaccessible video."})
-                    #            self.logger.warning(f"Private or inaccessible video detected. URL: {video_url}")
-                    #        else:
-                    #            video_url = entry.get('webpage_url', entry.get('url', 'Unknown URL'))
-                    #            all_video_urls.append(video_url)
-                    #elif info_type == 'video':
-                    #    video_url = info_dict.get('webpage_url', 'Unknown URL')
-                    #    all_video_urls.append(video_url)
-                    #else:
-                    #    self.logger.warning(f"Unhandled type: {info_type} for URL: {url}")
-                    #    self.failed_urls.append({"url": url, "reason": f"Unhandled type: {info_type}"})
-            #except Exception as e:
-            #    error_message = str(e)
-            #    self.logger.error(f"Error extracting URL '{url}': {error_message}")
-            #    self.logger.error(traceback.format_exc())
-            #    self.failed_urls.append({"url": url, "reason": error_message})
-
-        self.total_items = len(all_video_urls)
-        self.logger.info(f"Total videos to download: {self.total_items}")
-
-        # Step 2: Process each video URL individually
-        for i in range(1, len(all_video_urls) + 1):
-            video_url = all_video_urls[i - 1]  # Access the video URL by index
-            # Check if a stop has been requested before downloading each video
+        for index, video_url in enumerate(self.all_video_urls, start=1):
+            # Call process_individual_video with the video URL, index, and total count
+            # Check if a stop has been requested
             if self._is_stopped:
                 self.status_update.emit("Download stopped by user.")
-                break  # Exit the loop if a stop is requested
-
-            # Emit a status update to inform the user about the current download
-            self.status_update.emit(f"Downloading video {i}/{self.total_items}: {video_url}")
-
-            try:
-                # yt_dlp options for extracting full metadata of the video
-                ydl_opts_full = {
-                    'quiet': True,          # Suppress yt_dlp's own output
-                    'skip_download': True,  # Do not download yet; metadata only
-                    'ignoreerrors': True,   # Ignore errors and continue+
-                    'no_color': True,       # Do not stick color text in output that will cause problems
-                }
-
-                # Include 'cookiefile' if cookies are provided
-                if self.cookies_file:
-                    ydl_opts_full['cookiefile'] = str(self.cookies_file)
-                    self.logger.debug(f"Using cookies file for metadata extraction: {self.cookies_file}")
-                else:
-                    self.logger.debug("No cookies file provided for metadata extraction.")
-                self.logger.debug(f"Metadata extraction options for video {video_url}: {ydl_opts_full}")
-                
-                # Use yt_dlp to extract detailed information about the video
-                with yt_dlp.YoutubeDL(ydl_opts_full) as ydl_full:
-                    video_info = ydl_full.extract_info(video_url, download=False)
-
-                    # If video_info is None, the video might be private or inaccessible
-                    if video_info is None:
-                        self.logger.error(f"Private video or inaccessible: {video_url}")
-                        self.failed_urls.append({"url": video_url, "reason": "Private or inaccessible video."})
-                        self.completed_items += 1
-                        self.update_total_progress()
-                        continue  # Move to the next video
-
-                # Process and download the video using the download manager
-                self.process_single_video(video_info, download_manager, self.output_path, video_url)
-                self.completed_items += 1  # Increment the count of completed downloads
-                self.update_total_progress()  # Update the overall progress bar
-            except Exception as e:
-                # Log any exceptions that occur during the download process
-                self.logger.error(f"Failed to download video '{video_url}': {e}")
-                self.failed_urls.append({"url": video_url, "reason": str(e)})
-                self.completed_items += 1
-                self.update_total_progress()
-
-            # Implement a cool-off period after every 10 video downloads to prevent rate limiting
-            self.download_counter += 1
-            if self.download_counter % 10 == 0:
-                # Choose a random delay between 0 and 2 seconds
-                delay = random.uniform(0, 2)
-                self.logger.info(f"Cooling off for {delay:.2f} seconds after {self.download_counter} video downloads.")
-                time.sleep(delay)  # Pause the thread for the chosen duration
+                break
+            self.process_individual_video(video_url, index, self.total_videos)
 
         # After processing all videos, emit the failed downloads signal if there are any failures
         if self.failed_urls:
@@ -320,6 +284,16 @@ class DownloadThread(QThread):
         self.status_update.emit("Download complete")
         self.finished.emit()  # Signal that the thread has finished its execution
 
+    def stop(self):
+        """
+        Stop the download process.
+
+        Sets the `_is_stopped` flag to True, which signals the thread to halt
+        ongoing and future download operations gracefully.
+        """
+        self._is_stopped = True
+        self.logger.info("Stop signal received. Attempting to terminate downloads gracefully.")
+    
     def update_total_progress(self) -> None:
         """
         Update the overall progress bar based on completed items.
@@ -327,15 +301,15 @@ class DownloadThread(QThread):
         Calculates the percentage of videos downloaded and emits the
         `total_progress_update` signal to update the GUI's progress bar.
         """
-        if self.total_items > 0:
+        if self.total_videos > 0:
             # Calculate progress as a percentage
-            total_progress = int((self.completed_items / self.total_items) * 100)
+            total_progress = int((self.completed_items / self.total_videos) * 100)
             self.total_progress_update.emit(total_progress)
         else:
             # If there are no items to download, set progress to 0%
             self.total_progress_update.emit(0)
 
-    def process_single_video(
+    def process_single_url(
         self,
         info_dict: Dict[str, Any],
         download_manager: YTDownloadManager,
@@ -446,52 +420,6 @@ class DownloadThread(QThread):
             self.logger.error(f"Failed to download video '{title}': {reason}")
             # Record the failed download with its reason
             self.failed_urls.append({"url": video_url, "reason": reason})
-
-    def prepare_metadata(self, info_dict: Dict[str, Any], original_url: str) -> str:
-        """
-        Prepare and format metadata text from video information.
-
-        Args:
-            info_dict (Dict[str, Any]): Dictionary containing video information.
-            original_url (str): Original URL of the video.
-
-        Returns:
-            str: Formatted metadata text.
-        """
-        metadata_sections = []
-
-        basic_info = {
-            'Title': info_dict.get('title', ''),
-            'Uploader': info_dict.get('uploader', ''),
-            'Upload date': info_dict.get('upload_date', ''),
-            'Duration': info_dict.get('duration', ''),
-            'View count': info_dict.get('view_count', ''),
-            'Like count': info_dict.get('like_count', ''),
-            'Description': info_dict.get('description', ''),
-            'Tags': ', '.join(info_dict.get('tags', [])),
-        }
-        metadata_sections.append("Basic Info:\n" + '\n'.join(f"{key}: {value}" for key, value in basic_info.items()))
-
-        technical_info = {
-            'Format': info_dict.get('format', ''),
-            'Format ID': info_dict.get('format_id', ''),
-            'Resolution': info_dict.get('resolution', ''),
-            'FPS': info_dict.get('fps', ''),
-            'Video Codec': info_dict.get('vcodec', ''),
-            'Audio Codec': info_dict.get('acodec', ''),
-        }
-        metadata_sections.append("Technical Info:\n" + '\n'.join(f"{key}: {value}" for key, value in technical_info.items()))
-
-        other_info = {
-            'Categories': ', '.join(info_dict.get('categories', [])),
-            'License': info_dict.get('license', ''),
-            'Age Limit': info_dict.get('age_limit', ''),
-            'Webpage URL': info_dict.get('webpage_url', ''),
-            'Original URL': original_url,
-        }
-        metadata_sections.append("Other Info:\n" + '\n'.join(f"{key}: {value}" for key, value in other_info.items()))
-
-        return '\n\n'.join(metadata_sections)
 
     def set_file_times(self, filepaths: List[Path], timestamp: int) -> None:
         """

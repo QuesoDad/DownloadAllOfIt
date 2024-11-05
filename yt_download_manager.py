@@ -44,7 +44,7 @@ class YTDownloadManager:
             self.logger.debug(f"download metadata file doesn't exist. Starting fresh.")
         return {}
 
-    def save_downloaded_file(self, video_url, output_file_path):
+    def save_downloaded_metadata(self, video_url, output_file_path):
         """Save downloaded file info to metadata JSON after a successful download."""
         self.downloaded_files[video_url] = output_file_path
         with self.downloaded_metadata_file.open("w") as file:
@@ -337,7 +337,7 @@ class YTDownloadManager:
                 raise
         
         # After successful download, save the information
-        self.save_downloaded_file(video_url, output_file_path)
+        self.save_downloaded_metadata(video_url, output_file_path)
 
     def prepare_metadata(self, info_dict, original_url):
         """
